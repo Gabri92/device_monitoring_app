@@ -1,0 +1,21 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title> Your device: {device.name} </title>
+</head>
+<body>
+    <h2>Welcome, {{ user.username }}!</h2>
+    <ul>
+        <li>MAC Address: {{ device.mac_address }}</li>
+        <li>IP Address: {{ device.ip_address }}</li>
+    </ul>
+    <form method="post" action="{% url 'logout' %}">
+        {% csrf_token %}
+        <button type="submit">Logout</button>
+    </form>
+</body>
+
+</html>
