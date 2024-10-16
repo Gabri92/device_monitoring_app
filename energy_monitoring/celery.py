@@ -8,7 +8,7 @@ app.config_from_object("django.conf:settings", namespace="CELERY")
 app.conf.beat_schedule = {
     'check_devices_every_30_seconds': {
         'task': 'user_devices.tasks.check_all_devices',
-        'schedule': 320.0,  # Run every 30 seconds
+        'schedule': 120,  # Run every 30 seconds
     },
 }
 

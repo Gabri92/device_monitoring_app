@@ -5,7 +5,7 @@ from django.contrib.auth.models import User
 class Device(models.Model):
     user = models.ForeignKey(User, on_delete=models.CASCADE, related_name='devices')
     name = models.CharField(max_length=100)
-    ip_address = models.GenericIPAddressField(protocol="ipv4")
+    ip_address = models.CharField(max_length=50)
     port = models.IntegerField(default=502)
     mac_address = models.CharField(max_length=50, unique=True)
     last_seen = models.DateTimeField(null=True, blank=True)  # Keeps track of when the device last responded

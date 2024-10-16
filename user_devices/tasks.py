@@ -1,11 +1,15 @@
 import logging
 import time
-import datetime
 from celery import shared_task, group
 from .models import Device, DeviceData
 from pymodbus.client import ModbusTcpClient
+from django.utils import timezone
+from redis import Redis 
+from redis.lock import Lock
 
 logger = logging.getLogger(__name__)
+
+redis_client = Redis(host='redis', port=6379)
 
 @shared_task
 def test_celery_task():
@@ -14,52 +18,65 @@ def test_celery_task():
 
 @shared_task
 def check_device(device_mac):
-    device = Device.objects.get(mac_address=device_mac)
-    logger.info(f"Checking device: {device.name}")
-    is_alive = False
-    attempts = 0
+    lock_key = f"lock_device_{device_mac}"
+    lock = Lock(redis_client, lock_key, timeout=180)
 
-    while attempts < 3:
-        client = ModbusTcpClient(device.ip_address, port=device.port)
-        connection = client.connect()
+    if lock.acquire(blocking=False):
+        try:
+            device = Device.objects.get(mac_address=device_mac)
+            logger.info(f"Checking device: {device.name}")
+            is_alive = False
+            attempts = 0
 
-        if connection:
-            logger.info(f"Device {device.name} is online")
-            device.is_active = True
-            device.last_seen = datetime.datetime.now()
-            read_attempts = 0
+            while attempts < 3:
+                client = ModbusTcpClient(device.ip_address, port=device.port)
+                connection = client.connect()
 
-            while read_attempts < 3:
-                try:
-                    num_registers = 3
-                    response = client.read_input_registers(0, num_registers)
-                    if not response.isError():
-                        logger.info(f"Device {device.name} responded with {response.registers}")
-                        values_dict = {f'value_{i+1}': response.registers[i] for i in range(num_registers)}
-                        DeviceData.objects.create(device=device, value=values_dict)
-                        logger.info(f"Data saved for {device.name}")
-                        is_alive = True
+                if connection:
+                    logger.info(f"Device {device.name} is online")
+                    device.is_active = True
+                    device.last_seen = timezone.now()
+                    device.save()
+                    read_attempts = 0
+
+                    while read_attempts < 3:
+                        try:
+                            num_registers = 3
+                            response = client.read_input_registers(0, num_registers)
+                            if not response.isError():
+                                values_dict = {f'value_{i+1}': response.registers[i] for i in range(num_registers)}
+                                #values_dict['timestamp'] = timezone.now().isoformat()
+                                values_dict['device'] = device.name
+                                #values_dict['user'] = device.user
+                                logger.info(f"Data read from {device.name}: {values_dict}")
+                                data = DeviceData.objects.create(device=device, value=values_dict)
+                                data.save()
+                                logger.info(f"Data saved for {device.name}")
+                                is_alive = True
+                                break
+                            else:
+                                logger.info(f"Error reading data from {device.name}")
+                                read_attempts += 1
+                                time.sleep(5)
+                        except:
+                            logger.info(f"Error reading data from {device.name}")
+                            read_attempts += 1
+                            time.sleep(5)
+
+                    client.close()
+                    if is_alive:
                         break
-                    else:
-                        logger.info(f"Error reading data from {device.name}")
-                        read_attempts += 1
-                        time.sleep(5)
-                except:
-                    logger.info(f"Error reading data from {device.name}")
-                    read_attempts += 1
-                    time.sleep(5)
-            
-            client.close()
-            if is_alive:
-                break
-        else:
-            logger.info(f"Could not connect to {device.name}. Attempt number {attempts + 1}")
-            device.is_active = False
-        attempts += 1
-        time.sleep(10)
-    
-    if not is_alive:
-        logger.info(f"{device.name} is not responsive after 3 connection attempts and 3 read attempts.")
+                else:
+                    logger.info(f"Could not connect to {device.name}. Attempt number {attempts + 1}")
+                    device.is_active = False
+                attempts += 1
+                time.sleep(10)
+
+            if not is_alive:
+                logger.info(f"{device.name} is not responsive after 3 connection attempts and 3 read attempts.")
+        finally:
+            lock.release()
+
 
 @shared_task
 def check_all_devices():
