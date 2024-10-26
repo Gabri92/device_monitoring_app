@@ -1,5 +1,5 @@
 from django.contrib import admin
-from .models import DeviceData, Device
+from .models import DeviceData, Device, ModbusAddress
 
 class DeviceDataAdmin(admin.ModelAdmin):
     list_display = ('device', 'timestamp', 'value')  # Display these fields in the list view
@@ -11,6 +11,11 @@ class DeviceDataAdmin(admin.ModelAdmin):
         queryset = super().get_queryset(request)
         return queryset.select_related('device__user')  # Optimize for related user access
 
+
+#class ModbusAddressAdmin(admin.ModelAdmin):
+#    list_display = ('ModbusAddress','value')
+
 admin.site.register(DeviceData, DeviceDataAdmin)
 admin.site.register(Device)
+admin.site.register(ModbusAddress)
 admin.site.site_header = 'Site Administration'

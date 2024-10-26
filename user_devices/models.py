@@ -4,7 +4,7 @@ from django.contrib.auth.models import User
 # Il device ha anche un ip associato
 class Device(models.Model):
     user = models.ForeignKey(User, on_delete=models.CASCADE, related_name='devices')
-    name = models.CharField(max_length=100)
+    name = models.CharField(max_length=100, default="unknown")
     ip_address = models.CharField(max_length=50)
     port = models.IntegerField(default=502)
     mac_address = models.CharField(max_length=50, unique=True)
@@ -18,3 +18,12 @@ class DeviceData(models.Model):
     device = models.ForeignKey(Device, on_delete=models.CASCADE, related_name='data_records')
     value = models.JSONField()
     timestamp = models.DateTimeField(auto_now_add=True)
+
+class ModbusAddress(models.Model):
+    device = models.ForeignKey(Device, on_delete=models.CASCADE, related_name='modbus_addresses')
+    address = models.IntegerField(default=0)
+    count = models.IntegerField(default=1)
+    description = models.CharField(max_length=100, blank=True, null=True)  # Optional field for description
+
+    def __str__(self):
+        return f"{self.device.name} - Address: {self.address}"

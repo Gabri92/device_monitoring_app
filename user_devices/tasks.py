@@ -45,9 +45,7 @@ def check_device(device_mac):
                             response = client.read_input_registers(0, num_registers)
                             if not response.isError():
                                 values_dict = {f'value_{i+1}': response.registers[i] for i in range(num_registers)}
-                                #values_dict['timestamp'] = timezone.now().isoformat()
                                 values_dict['device'] = device.name
-                                #values_dict['user'] = device.user
                                 logger.info(f"Data read from {device.name}: {values_dict}")
                                 data = DeviceData.objects.create(device=device, value=values_dict)
                                 data.save()
@@ -68,7 +66,8 @@ def check_device(device_mac):
                         break
                 else:
                     logger.info(f"Could not connect to {device.name}. Attempt number {attempts + 1}")
-                    device.is_active = False
+                    device.is_active = False 
+                    device.save()                  
                 attempts += 1
                 time.sleep(10)
 
