@@ -5,6 +5,7 @@ from .views import home_view  # Import your home view or another view to redirec
 from . import views
 
 urlpatterns = [
+    path('', views.base_redirect, name='base_redirect'),
     path('login/', LoginView.as_view(), name='login'),  # URL for the login view
     path('logout/', LogoutView.as_view(next_page='login'), name='logout'),  # URL for logout
     path('home/', home_view, name='home'),  # URL for the home view

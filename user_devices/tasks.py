@@ -1,7 +1,7 @@
 import logging
 import time
 from celery import shared_task, group
-from .models import Device, DeviceData
+from .models import Device, DeviceData, ModbusAddress
 from pymodbus.client import ModbusTcpClient
 from django.utils import timezone
 from redis import Redis 
@@ -39,27 +39,30 @@ def check_device(device_mac):
                     device.save()
                     read_attempts = 0
 
+                    addresses = ModbusAddress.objects.filter(device = device)
+
                     while read_attempts < 3:
                         try:
-                            num_registers = 3
-                            response = client.read_input_registers(0, num_registers)
-                            if not response.isError():
-                                values_dict = {f'value_{i+1}': response.registers[i] for i in range(num_registers)}
-                                values_dict['device'] = device.name
-                                logger.info(f"Data read from {device.name}: {values_dict}")
-                                data = DeviceData.objects.create(device=device, value=values_dict)
-                                data.save()
-                                logger.info(f"Data saved for {device.name}")
-                                is_alive = True
+                            for address in addresses:
+                                response = client.read_input_registers(address.address, address.count)
+                                if not response.isError():
+                                    values_dict = {f'value_{i+1}': response.registers[i] for i in range(address.count)}
+                                    values_dict['device'] = device.name
+                                    logger.info(f"Data read from {device.name}: {values_dict}")
+                                    data = DeviceData.objects.create(device=device, value=values_dict)
+                                    data.save()
+                                    logger.info(f"Data saved for {device.name}")
+                                    is_alive = True
+                                else:
+                                    logger.info(f"Error reading data from {device.name}")
+                                    read_attempts += 1
+                                    time.sleep(5)
+                            if is_alive:
                                 break
-                            else:
+                        except:
                                 logger.info(f"Error reading data from {device.name}")
                                 read_attempts += 1
                                 time.sleep(5)
-                        except:
-                            logger.info(f"Error reading data from {device.name}")
-                            read_attempts += 1
-                            time.sleep(5)
 
                     client.close()
                     if is_alive:

@@ -4,6 +4,13 @@ from django.shortcuts import render
 from django.shortcuts import render, get_object_or_404
 from .models import Device
 from user_devices.tasks import test_celery_task
+from django.shortcuts import redirect
+
+def base_redirect(request):
+    if request.user.is_authenticated:
+        return redirect('home/')
+    else:
+        return redirect('login/')
 
 def home_view(request):
     devices = request.user.devices.all()
