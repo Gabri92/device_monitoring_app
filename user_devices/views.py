@@ -22,7 +22,7 @@ def device_detail_view(request,device_name):
     device = get_object_or_404(Device, name=device_name, user=request.user)
 
     # Retrieve the buttons for this device
-    buttons = Button.objects.filter(device=device)
+    buttons = Button.objects.filter(device=device, show_in_user_page=True)
 
     # Get the last `tot_records` data entries for this device
     last_records = device.last_records

@@ -1,8 +1,10 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
+    {% load static %}
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <link rel="stylesheet" href="{% static 'css/style.css' %}">
     <meta http-equiv="refresh" content="15">
     <title>Your device: {{ device.name }}</title>
 </head>
@@ -36,26 +38,26 @@
     {% endif %}
 
     <h3>Buttons</h3>
-    {% if buttons %}
-        <ul>
-            {% for button in buttons %}
-                <li>
-                    <form method="post" action="{% url 'toggle_button' button.id %}">
-                        {% csrf_token %}
-                        <button type="submit">
-                            {% if button.is_active %}Turn Off{% else %}Turn On{% endif %}
-                        </button>
-                    </form>
-                </li>
-            {% endfor %}
-        </ul>
+    {% if buttons.exists %}
+    <div class="flex-container">
+        {% for button in buttons %}
+            <form method="post" action="{% url 'toggle_button' button.id %}" style="margin: 0;">
+                {% csrf_token %}
+                <button 
+                    type="submit" 
+                    class=" button-style {% if button.is_active %}active-button{% else %}inactive-button{% endif %}">
+                    {{ button.label }}
+                </button>
+            </form>
+        {% endfor %}
+    </div>
     {% else %}
-        <p>No buttons available for this device.</p>
+    <p>No buttons available for this device.</p>
     {% endif %}
 
-    <form method="post" action="{% url 'logout' %}">
+    <form method="post" action="{% url 'logout' %}"  class="logout-form">
         {% csrf_token %}
-        <button type="submit">Logout</button>
+        <button type="submit" class="button-style">Logout</button>
     </form>
 </body>
 </html>

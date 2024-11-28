@@ -1,4 +1,5 @@
 import paramiko
+import time
 
 def execute_ssh_command(ip, username, password, command):
     """
@@ -26,11 +27,22 @@ def set_pin_status(device, pin, status):
     """
     # Command to set the GPIO pin
     gpio_status = "1" if status == "on" else "0"
-    command = f"gpio write {pin} {gpio_status}"  # Example command; adjust for your device
 
+    command = f"gpio mode {pin} out"
     # Execute the command over SSH
     success, response = execute_ssh_command(
-        ip=device.ssh_ip_address,
+        ip=device.ip_address,
+        username=device.ssh_username,
+        password=device.ssh_password,
+        command=command
+    )
+
+    time.sleep(0.5)
+
+    command = f"gpio write {pin} {gpio_status}"
+    # Execute the command over SSH
+    success, response = execute_ssh_command(
+        ip=device.ip_address,
         username=device.ssh_username,
         password=device.ssh_password,
         command=command
