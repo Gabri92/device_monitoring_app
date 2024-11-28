@@ -76,10 +76,10 @@ WSGI_APPLICATION = 'energy_monitoring.wsgi.application'
 
 DATABASES = {
     'default': {
-        'ENGINE': 'django.db.backends.postgresql',
+        'ENGINE':'django.db.backends.postgresql',
         'NAME': 'energy-db',
         'USER': 'mac',
-        'PASSWORD': '1234',
+        'PASSWORD':'1234',
         'HOST': 'database',
         'PORT': '5432',
     }
