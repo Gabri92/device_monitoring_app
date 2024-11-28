@@ -1,6 +1,9 @@
 # Use the official Python image from the DockerHub
 FROM python:3.11-slim
 
+# Install the necessary package for ping command
+RUN apt-get update && apt-get install -y iputils-ping
+
 # Set the working directory in docker
 WORKDIR /app
 

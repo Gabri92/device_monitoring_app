@@ -1,49 +1,48 @@
 services:
   web:
-    build:
+    build: .
     command: ["python", "manage.py", "runserver", "0.0.0.0:8000"]
-    network_mode: host  # Usa la rete host per il container
     volumes:
-      - ./app:/app
+      - .:/app
+    ports:
+      #- "192.168.0.57:8000:8000"
+      - "8000:8000"
     depends_on:
       - database
       - redis
 
   database:
     image: postgres:latest
+    volumes:
+      - postgres_data:/var/lib/postgresql/data/
     environment:
       - POSTGRES_USER=${POSTGRES_USER}
       - POSTGRES_PASSWORD=${POSTGRES_PASSWORD}
       - POSTGRES_DB=${POSTGRES_DB}
-    network_mode: host  # Usa la rete host per il container
+    ports:
+      - "5432:5432"
 
   celery:
-    build:
+    build: .
     command: celery -A energy_monitoring worker --loglevel=info --concurrency=10
     volumes:
-      - ./app:/app
-    network_mode: host  # Usa la rete host per il container
+      - .:/app
     depends_on:
       - web
-      - redis
+      - redis  # Ensure celery starts after redis
 
   celery-beat:
-    build:
+    build: .
     command: celery -A energy_monitoring beat --loglevel=info
     volumes:
-      - ./app:/app
-    network_mode: host  # Usa la rete host per il container
+      - .:/app
     depends_on:
       - redis
 
   redis:
     image: redis:alpine
-    network_mode: host  # Usa la rete host per il container
-
-networks:
-  default:
-    external:
-      name: host
-
+    ports:
+      - "6379:6379"  # Expose Redis on port 6379
+      
 volumes:
   postgres_data:
