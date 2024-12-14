@@ -2,3 +2,4 @@ Django==5.1.1
 psycopg2-binary==2.9.9
 celery[redis]
 pymodbus>=3.0.0
+paramiko

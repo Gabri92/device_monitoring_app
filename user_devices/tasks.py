@@ -9,7 +9,7 @@ from redis.lock import Lock
 
 logger = logging.getLogger(__name__)
 
-redis_client = Redis(host='redis', port=6379)
+redis_client = Redis(host='localhost', port=6379)
 
 @shared_task
 def test_celery_task():

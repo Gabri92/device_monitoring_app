@@ -9,7 +9,7 @@ https://docs.djangoproject.com/en/5.1/topics/settings/
 For the full list of settings and their values, see
 https://docs.djangoproject.com/en/5.1/ref/settings/
 """
-
+import os
 from pathlib import Path
 
 # Build paths inside the project like this: BASE_DIR / 'subdir'.
@@ -20,12 +20,12 @@ BASE_DIR = Path(__file__).resolve().parent.parent
 # See https://docs.djangoproject.com/en/5.1/howto/deployment/checklist/
 
 # SECURITY WARNING: keep the secret key used in production secret!
-SECRET_KEY = 'django-insecure-r=28e7zs8g&_qks3*v86)$o3z)wga2fwk5nck)#nt8ewsbw&6z'
+SECRET_KEY = os.getenv('DJANGO_SECRET_KEY', 'fallback-secret-if-not-set')
 
 # SECURITY WARNING: don't run with debug turned on in production!
-DEBUG = True
+DEBUG = False
 
-ALLOWED_HOSTS = ['*']
+ALLOWED_HOSTS = ['192.168.0.57', 'localhost','127.0.0.1']
 
 
 # Application definition
@@ -76,11 +76,11 @@ WSGI_APPLICATION = 'energy_monitoring.wsgi.application'
 
 DATABASES = {
     'default': {
-        'ENGINE': 'django.db.backends.postgresql',
+        'ENGINE':'django.db.backends.postgresql',
         'NAME': 'energy-db',
         'USER': 'mac',
-        'PASSWORD': '1234',
-        'HOST': 'database',
+        'PASSWORD':'1234',
+        'HOST': 'localhost',
         'PORT': '5432',
     }
 }
@@ -121,6 +121,7 @@ USE_TZ = True
 # https://docs.djangoproject.com/en/5.1/howto/static-files/
 
 STATIC_URL = 'static/'
+STATIC_ROOT = '/home/gabriele/energy_monitoring/static/'
 
 # Default primary key field type
 # https://docs.djangoproject.com/en/5.1/ref/settings/#default-auto-field
@@ -132,9 +133,13 @@ LOGIN_URL = 'login'  # Redirect here if a user is not authenticated
 LOGIN_REDIRECT_URL = 'home'  # Redirect here after successful login
 LOGOUT_REDIRECT_URL = 'login'  # Redirect here after logout
 
-# Celery settings
-CELERY_BROKER_URL = 'redis://redis:6379/0'
-CELERY_RESULT_BACKEND = "redis://redis:6379/0"
+CELERY_BROKER_URL = 'redis://localhost:6379/0'
+CELERY_RESULT_BACKEND = 'redis://localhost:6379/0'
 
 #TODO: Decidere se mantenere
 DATA_UPLOAD_MAX_NUMBER_FIELDS = 10000  # Set this to a large enough number
+
+# Va poi messo in sicurezza
+SECURE_SSL_REDIRECT = False
+CSRF_COOKIE_SECURE = False
+SESSION_COOKIE_SECURE = False

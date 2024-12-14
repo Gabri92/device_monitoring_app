@@ -1,10 +1,12 @@
 <!DOCTYPE html>
 <html lang="en">
-
 <head>
+    {% load static %}
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title> Your device: {device.name} </title>
+    <link rel="stylesheet" href="{% static 'css/style.css' %}">
+    <meta http-equiv="refresh" content="15">
+    <title>Your device: {{ device.name }}</title>
 </head>
 <body>
     <h2>Welcome, {{ user.username }}!</h2>
@@ -12,10 +14,50 @@
         <li>MAC Address: {{ device.mac_address }}</li>
         <li>IP Address: {{ device.ip_address }}</li>
     </ul>
-    <form method="post" action="{% url 'logout' %}">
+
+    <h3>Recent Data Records</h3>
+    {% if recent_data %}
+        <table style="border: 1px solid black; border-collapse: collapse;">
+            <thead>
+                <tr>
+                    <th>Timestamp</th>
+                    <th>Value</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for data in recent_data %}
+                    <tr>
+                        <td>{{ data.timestamp }}</td>
+                        <td>{{ data.value }}</td>
+                    </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    {% else %}
+        <p>No data records available for this device.</p>
+    {% endif %}
+
+    <h3>Buttons</h3>
+    {% if buttons.exists %}
+    <div class="flex-container">
+        {% for button in buttons %}
+            <form method="post" action="{% url 'toggle_button' button.id %}" style="margin: 0;">
+                {% csrf_token %}
+                <button 
+                    type="submit" 
+                    class=" button-style {% if button.is_active %}active-button{% else %}inactive-button{% endif %}">
+                    {{ button.label }}
+                </button>
+            </form>
+        {% endfor %}
+    </div>
+    {% else %}
+    <p>No buttons available for this device.</p>
+    {% endif %}
+
+    <form method="post" action="{% url 'logout' %}"  class="logout-form">
         {% csrf_token %}
-        <button type="submit">Logout</button>
+        <button type="submit" class="button-style">Logout</button>
     </form>
 </body>
-
 </html>
