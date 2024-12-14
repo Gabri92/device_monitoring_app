@@ -4,9 +4,8 @@ services:
     command: ["python", "manage.py", "runserver", "0.0.0.0:8000"]
     volumes:
       - .:/app
-    ports:
-      #- "192.168.0.57:8000:8000"
-      - "8000:8000"
+      - /home/gabriele/energy_monitoring/static:/home/gabriele/energy_monitoring/static
+    network_mode: host
     depends_on:
       - database
       - redis
@@ -19,14 +18,14 @@ services:
       - POSTGRES_USER=${POSTGRES_USER}
       - POSTGRES_PASSWORD=${POSTGRES_PASSWORD}
       - POSTGRES_DB=${POSTGRES_DB}
-    ports:
-      - "5432:5432"
+    network_mode: host
 
   celery:
     build: .
     command: celery -A energy_monitoring worker --loglevel=info --concurrency=10
     volumes:
       - .:/app
+    network_mode: host
     depends_on:
       - web
       - redis  # Ensure celery starts after redis
@@ -36,13 +35,13 @@ services:
     command: celery -A energy_monitoring beat --loglevel=info
     volumes:
       - .:/app
+    network_mode: host
     depends_on:
       - redis
 
   redis:
     image: redis:alpine
-    ports:
-      - "6379:6379"  # Expose Redis on port 6379
+    network_mode: host
       
 volumes:
   postgres_data:

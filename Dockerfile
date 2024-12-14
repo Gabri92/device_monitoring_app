@@ -4,6 +4,14 @@ FROM python:3.11-slim
 # Set the working directory in docker
 WORKDIR /app
 
+# Install system tools and dependencies
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    iputils-ping \
+    gcc \
+    libpq-dev \
+    && rm -rf /var/lib/apt/lists/*
+
+
 # Copy the dependencies file to the working directory
 COPY requirements.txt .
 
