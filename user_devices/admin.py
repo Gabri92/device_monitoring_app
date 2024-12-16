@@ -1,27 +1,51 @@
 from django.contrib import admin
-from .models import User,DeviceData, Device, ModbusAddress, Button
+from .models import User, Gateway, Device, DeviceVariable, MappingVariable, ComputedVariable, Button
 from .commands import set_pin_status
 from django.utils.html import format_html
 from django.urls import reverse
 
+class GatewayAdmin(admin.ModelAdmin):
+    list_display = ('ip_address', 'user')
+    list_filter = ('user','ip_address')  # Filter by user and active status
+    search_fields = ('user', 'ip_address')  # Search bar
+
+class MemoryMappingInline(admin.StackedInline):
+    model = MappingVariable
+    extra = 0
+    fields = ('var_name', 'start_index', 'end_index', 'unit', 'conversion_factor')
+
+class ComputedVariableInline(admin.StackedInline):
+    model = ComputedVariable
+    extra = 0
+    fields = ('var_name', 'unit', 'formula')
+
 class DeviceAdmin(admin.ModelAdmin):
-    list_display = ('name', 'user', 'ip_address', 'mac_address', 'is_active')
-    list_filter = ('user', 'is_active')  # Filter by user and active status
-    search_fields = ('name', 'ip_address', 'mac_address')  # Search bar
+    list_display = ('name','user','Gateway','slave_id','start_address','bytes_count')
+    list_filter = ('user','Gateway')
+    search_fields = ('user','Gateway')
+    inlines = [MemoryMappingInline, ComputedVariableInline]
 
-class DeviceDataAdmin(admin.ModelAdmin):
-    list_display = ('device', 'timestamp', 'value')  # Display these fields in the list view
-    list_filter = ('device__user', 'device')  # Filter by user and device
-    ordering = ('device', 'timestamp')  # Order by device and timestamp
-
-class ModbusAddressAdmin(admin.ModelAdmin):
-    list_display = ('device','address','description')
-    list_filter = ('device__user', 'device')  # Filter by user (through device) and device
-    search_fields = ('device__name', 'address')  # search  device  
+    def get_inlines(self, request, obj=None):
+        """
+        Dynamically show the correct inline based on the variable_type selected
+        """
+        if obj:
+            if hasattr(obj, 'variables'):
+                variable_type = obj.variables.all()[0].variable_type if obj.variables.exists() else None
+                if variable_type == "memory":
+                    return [MemoryMappingInline]
+                elif variable_type == "computed":
+                    return [ComputedVariableInline]
+        return super().get_inlines(request, obj)
 
 class ButtonAdmin(admin.ModelAdmin):
-    list_display = ('label', 'device', 'pin_number', 'is_active', 'show_in_user_page', 'toggle_button_link')
-    list_filter = ('device', 'show_in_user_page')
+    list_display = ('label', 'Gateway', 'pin_number', 'is_active', 'show_in_user_page', 'toggle_button_link')
+    list_filter = ('Gateway', 'show_in_user_page')
+    
+    def get_readonly_fields(self, request, obj=None):
+        # Make 'is_active' readonly
+        readonly_fields = super().get_readonly_fields(request, obj)
+        return readonly_fields + ("is_active",)
 
     def toggle_button_link(self, obj):
         """
@@ -61,7 +85,7 @@ class ButtonAdmin(admin.ModelAdmin):
 
         # Call the SSH function
         success, response = set_pin_status(
-            device=button.device,
+            device=button.Gateway,
             pin=button.pin_number,
             status=status
         )
@@ -77,8 +101,7 @@ class ButtonAdmin(admin.ModelAdmin):
         from django.shortcuts import redirect
         return redirect('admin:user_devices_button_changelist')
     
-admin.site.register(DeviceData, DeviceDataAdmin)
+admin.site.register(Gateway, GatewayAdmin)
 admin.site.register(Device, DeviceAdmin)
-admin.site.register(ModbusAddress, ModbusAddressAdmin)
 admin.site.register(Button, ButtonAdmin)
 admin.site.site_header = 'Site Administration'

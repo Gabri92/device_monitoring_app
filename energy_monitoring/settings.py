@@ -23,7 +23,7 @@ BASE_DIR = Path(__file__).resolve().parent.parent
 SECRET_KEY = os.getenv('DJANGO_SECRET_KEY', 'fallback-secret-if-not-set')
 
 # SECURITY WARNING: don't run with debug turned on in production!
-DEBUG = False
+DEBUG = True
 
 ALLOWED_HOSTS = ['192.168.0.57', 'localhost','127.0.0.1']
 
@@ -76,15 +76,14 @@ WSGI_APPLICATION = 'energy_monitoring.wsgi.application'
 
 DATABASES = {
     'default': {
-        'ENGINE':'django.db.backends.postgresql',
+        'ENGINE': 'django.db.backends.postgresql',
         'NAME': 'energy-db',
         'USER': 'mac',
-        'PASSWORD':'1234',
-        'HOST': 'localhost',
-        'PORT': '5432',
+        'PASSWORD': 'Giove2578!',
+        'HOST': 'database',  # Use the service name defined in docker-compose.yml
+        'PORT': 5432,
     }
 }
-
 
 # Password validation
 # https://docs.djangoproject.com/en/5.1/ref/settings/#auth-password-validators
@@ -133,8 +132,10 @@ LOGIN_URL = 'login'  # Redirect here if a user is not authenticated
 LOGIN_REDIRECT_URL = 'home'  # Redirect here after successful login
 LOGOUT_REDIRECT_URL = 'login'  # Redirect here after logout
 
-CELERY_BROKER_URL = 'redis://localhost:6379/0'
-CELERY_RESULT_BACKEND = 'redis://localhost:6379/0'
+CELERY_BROKER_URL = "redis://redis:6379/0"
+CELERY_RESULT_BACKEND = "redis://redis:6379/0"
+#CELERY_BROKER_URL = 'redis://localhost:6379/0'
+#CELERY_RESULT_BACKEND = 'redis://localhost:6379/0'
 
 #TODO: Decidere se mantenere
 DATA_UPLOAD_MAX_NUMBER_FIELDS = 10000  # Set this to a large enough number

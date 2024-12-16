@@ -3,8 +3,7 @@ from django.contrib import messages
 from django.contrib.auth import authenticate, login, logout
 from django.shortcuts import render
 from django.shortcuts import render, get_object_or_404
-from .models import Device, Button, DeviceData
-from user_devices.tasks import test_celery_task
+from .models import Device, Button
 from django.shortcuts import redirect
 from .commands import set_pin_status
 
@@ -26,13 +25,13 @@ def device_detail_view(request,device_name):
 
     # Get the last `tot_records` data entries for this device
     last_records = device.last_records
-    recent_data = DeviceData.objects.filter(device=device).order_by('-timestamp')[:last_records]
+    #recent_data = DeviceData.objects.filter(device=device).order_by('-timestamp')[:last_records]
 
     # Pass everything to the template
     return render(request, 'device_detail.html', {
         'device': device,
         'buttons': buttons,
-        'recent_data': recent_data,
+        #'recent_data': recent_data,
     })
 
 def toggle_button_status(request, button_id):

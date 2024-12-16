@@ -2,17 +2,17 @@
 FROM python:3.11-slim
 
 # Install the necessary package for ping command
-RUN apt-get update && apt-get install -y iputils-ping
+#RUN apt-get update && apt-get install -y iputils-ping
 
 # Set the working directory in docker
 WORKDIR /app
 
 # Install system tools and dependencies
-RUN apt-get update && apt-get install -y --no-install-recommends \
-    iputils-ping \
-    gcc \
-    libpq-dev \
-    && rm -rf /var/lib/apt/lists/*
+#RUN apt-get update && apt-get install -y --no-install-recommends \
+#    iputils-ping \
+#    gcc \
+#    libpq-dev \
+#    && rm -rf /var/lib/apt/lists/*
 
 
 # Copy the dependencies file to the working directory
