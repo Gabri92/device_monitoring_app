@@ -38,7 +38,6 @@ class DeviceAdmin(admin.ModelAdmin):
                     return [ComputedVariableInline]
         return super().get_inlines(request, obj)
 
-@admin.register(DeviceData)
 class DeviceDataAdmin(admin.ModelAdmin):
     list_display = ('device_name', 'timestamp','user', 'gateway')
     search_fields = ('user__username', 'gateway__ip_address', 'name__device_name')
@@ -114,5 +113,6 @@ class ButtonAdmin(admin.ModelAdmin):
     
 admin.site.register(Gateway, GatewayAdmin)
 admin.site.register(Device, DeviceAdmin)
+admin.site.register(DeviceData, DeviceDataAdmin)    
 admin.site.register(Button, ButtonAdmin)
 admin.site.site_header = 'Site Administration'
