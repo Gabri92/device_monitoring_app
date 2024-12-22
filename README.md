@@ -22,9 +22,24 @@ The app is designed to manage and monitor Modbus-based devices within a networke
 </ul>
 
 ### Architecture
+<div align="center">
+  <img src=/docs/images/Webapp_architecture.jpg alt="Webapp architecture" width="650" />
+</div>
+The django webapp produce a new set of concurrent task each 30 sec (the time can be configured at will). 
+
+Each task does the following:
+
+<ol>
+  <li> Read the data from the modbus register of a device </li>
+  <li> Map the raw data to a set of variables with a physical meaning </li>
+  <li> If necessary, compute variables which are combination of the previous mapped ones </li>
+  <li> Save the data as JSON to the database </li>
+</ol>
+The task are then stored in a queue where they are consumed from a celery worker. Here the task is executed, so it read the data from the device and save them in the database.
+Finally, the webapp read the data and show them in the user and admin interfaces.
 
 ## How to run the webapp
-The app can be run in Debug mode by downloading the repository and typing the command 'docker-compose up -d --build'. Then it is possible to access the admin interface at 'http://localhost:8000/admin/'. 
+The app can be launched in Debug mode by downloading the repository and typing the command 'docker-compose up -d --build'. Then it is possible to access the admin interface at 'http://localhost:8000/admin/'. 
 To run the app in production mode it is necessary to install and configure a web server, like Apache2.
 
 ## Next steps
