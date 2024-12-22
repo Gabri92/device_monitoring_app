@@ -3,7 +3,7 @@ from django.contrib import messages
 from django.contrib.auth import authenticate, login, logout
 from django.shortcuts import render
 from django.shortcuts import render, get_object_or_404
-from .models import Device, Button
+from .models import Device, Button, Gateway
 from django.shortcuts import redirect
 from .commands import set_pin_status
 
@@ -14,24 +14,27 @@ def base_redirect(request):
         return redirect('login/')
 
 def home_view(request):
-    devices = request.user.devices.all()
-    return render(request, 'home.html',{'devices': devices})  # Create a home.html template
+    user = request.user
+    gateways = Gateway.objects.filter(user=user)
+    devices = Device.objects.filter(user=user)
+    return render(request, 'home.html',
+                  {'user': user, 
+                   'gateways': gateways, 
+                   'devices': devices
+                   })  # Create a home.html template
 
 def device_detail_view(request,device_name):
+    # Retrieve the device object
     device = get_object_or_404(Device, name=device_name, user=request.user)
 
     # Retrieve the buttons for this device
-    buttons = Button.objects.filter(device=device, show_in_user_page=True)
-
-    # Get the last `tot_records` data entries for this device
-    last_records = device.last_records
-    #recent_data = DeviceData.objects.filter(device=device).order_by('-timestamp')[:last_records]
+    buttons = Button.objects.filter(Gateway=device.Gateway, show_in_user_page=True)
 
     # Pass everything to the template
     return render(request, 'device_detail.html', {
+        'gateway': device.Gateway, 
         'device': device,
         'buttons': buttons,
-        #'recent_data': recent_data,
     })
 
 def toggle_button_status(request, button_id):

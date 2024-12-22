@@ -1,5 +1,5 @@
 from django.contrib import admin
-from .models import User, Gateway, Device, DeviceVariable, MappingVariable, ComputedVariable, Button
+from .models import User, Gateway, Device, DeviceVariable, MappingVariable, ComputedVariable, Button, DeviceData
 from .commands import set_pin_status
 from django.utils.html import format_html
 from django.urls import reverse
@@ -12,7 +12,7 @@ class GatewayAdmin(admin.ModelAdmin):
 class MemoryMappingInline(admin.StackedInline):
     model = MappingVariable
     extra = 0
-    fields = ('var_name', 'start_index', 'end_index', 'unit', 'conversion_factor')
+    fields = ('var_name', 'address', 'unit', 'conversion_factor')
 
 class ComputedVariableInline(admin.StackedInline):
     model = ComputedVariable
@@ -37,6 +37,17 @@ class DeviceAdmin(admin.ModelAdmin):
                 elif variable_type == "computed":
                     return [ComputedVariableInline]
         return super().get_inlines(request, obj)
+
+@admin.register(DeviceData)
+class DeviceDataAdmin(admin.ModelAdmin):
+    list_display = ('device_name', 'timestamp','user', 'gateway')
+    search_fields = ('user__username', 'gateway__ip_address', 'name__device_name')
+    list_filter = ('gateway', 'device_name', 'timestamp')
+    readonly_fields = ('user', 'device_name', 'gateway', 'timestamp','data')
+    fieldsets = (
+        (None, {'fields': ('user', 'gateway', 'device_name', 'data')}),
+        ('Timestamps', {'fields': ('timestamp',)}),
+    )
 
 class ButtonAdmin(admin.ModelAdmin):
     list_display = ('label', 'Gateway', 'pin_number', 'is_active', 'show_in_user_page', 'toggle_button_link')

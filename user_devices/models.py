@@ -42,8 +42,7 @@ class DeviceVariable(models.Model):
 
 class MappingVariable(DeviceVariable):
     device = models.ForeignKey(Device, on_delete=models.CASCADE, related_name="mapped_variables")
-    start_index = models.PositiveBigIntegerField(default = 1, help_text="Starting index of the response array")
-    end_index = models.PositiveIntegerField(default=1, help_text="End index of the response array")
+    address = models.CharField(default="",help_text="Address of the mapped value")
     unit = models.CharField(max_length=20, help_text="Measurement unit (e.g., V, A, Hz)")
     conversion_factor = models.FloatField(default=1.0, help_text="Factor to convert raw data to physical value")
 
@@ -59,6 +58,16 @@ class ComputedVariable(DeviceVariable):
 
     def __str__(self):
         return f"{self.var_name} (Computed)"
+
+class DeviceData(models.Model):
+    user = models.ForeignKey(User, on_delete=models.CASCADE, related_name='user_device_data')
+    gateway = models.ForeignKey(Gateway, on_delete=models.CASCADE, related_name='gateway_data')
+    device_name = models.ForeignKey(Device, on_delete=models.CASCADE, related_name='device_data')
+    data = models.JSONField()
+    timestamp = models.DateTimeField(auto_now_add=True)
+
+    def __str__(self):
+        return f"{self.device_name} - {self.timestamp}"
 
 class Button(models.Model):
     Gateway = models.ForeignKey(Gateway, null=True, on_delete=models.CASCADE, related_name='buttons')
