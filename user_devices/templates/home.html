@@ -1,33 +1,53 @@
 <!DOCTYPE html>
 <html lang="en">
+
 <head>
+    {% load static %}
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <link rel="stylesheet" href="{% static 'css/home.css' %}">
     <title>Home</title>
 </head>
+
 <body>
-    <h2>Welcome, {{ user.username }}!</h2>
-    <h2> Gateways Connected </h2>
-    {% for gateway in gateways %}
-    <li>
-        <a> Gateway connected with ip {{ gateway.ip_address }} at port {{gateway.port}}</a>
-    </li>
-    {% empty %}
-    <p>No gateways found.</p>
-    {% endfor %}
-    <h2>  Your Devices </h2>
-    <ul>
-    {% for device in devices %}
-        <li>
-            <a href="{% url 'device_detail' device.name %}">{{ device }}</a>
-        </li>
-    {% empty %}
-        <p>No devices found.</p>
-    {% endfor %}
-</ul>
-<form method="post" action="{% url 'logout' %}">
-    {% csrf_token %}
-    <button type="submit">Logout</button>
-</form>
+
+    <header class="header-container">
+        <div class="user-name">
+            <h2>Welcome, {{ user.username }}!</h2>
+        </div>
+        <div class="logout-container">
+            <form method="post" action="{% url 'logout' %}">
+                {% csrf_token %}
+                <button type="submit">Logout</button>
+            </form>
+        </div>
+    </header>
+
+    <main class="main-content">
+        <section class="gateway-container">
+            <h2> Gateways Connected </h2>
+            {% for gateway in gateways %}
+            <li>
+                Gateway connected with ip {{ gateway.ip_address }} at port {{gateway.port}}
+            </li>
+            {% empty %}
+            <p>No gateways found.</p>
+            {% endfor %}
+        </section>
+
+        <section class="device-container">
+            <h2> Your Devices </h2>
+            <ul>
+                {% for device in devices %}
+                <li class="device-item">
+                    <a href="{% url 'device_detail' device.name %}">{{ device }}</a>
+                </li>
+                {% empty %}
+                <p>No devices found.</p>
+                {% endfor %}
+            </ul>
+        </section>
+    </main>
 </body>
+
 </html>

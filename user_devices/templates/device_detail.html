@@ -1,63 +1,89 @@
 <!DOCTYPE html>
 <html lang="en">
+    
 <head>
     {% load static %}
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <link rel="stylesheet" href="{% static 'css/style.css' %}">
     <meta http-equiv="refresh" content="15">
+    <link rel="stylesheet" href="{% static 'css/device.css' %}">
     <title>Your device: {{ device.name }}</title>
 </head>
+
 <body>
-    <h2>Welcome, {{ user.username }}!</h2>
-    <ul>
-        <li>Gateway IP Address: {{ gateway.ip_address }}</li>
-        <li>Device Name: {{ device.name }}</li>
-    </ul>
 
-    <h3>Recent Data Records</h3>
-    {% if recent_data %}
-        <table style="border: 1px solid black; border-collapse: collapse;">
-            <thead>
-                <tr>
-                    <th>Timestamp</th>
-                    <th>Value</th>
-                </tr>
-            </thead>
-            <tbody>
-                {% for data in recent_data %}
-                    <tr>
-                        <td>{{ data.timestamp }}</td>
-                        <td>{{ data.value }}</td>
-                    </tr>
-                {% endfor %}
-            </tbody>
-        </table>
-    {% else %}
-        <p>No data records available for this device.</p>
-    {% endif %}
-
-    <h3>Buttons</h3>
-    {% if buttons.exists %}
-    <div class="flex-container">
-        {% for button in buttons %}
-            <form method="post" action="{% url 'toggle_button' button.id %}" style="margin: 0;">
+    <header class="header-container">
+        <div class="user-name">
+            <h2>Welcome, {{ user.username }}!</h2>
+        </div>
+        <div class="logout-container">
+            <form method="post" action="{% url 'logout' %}">
                 {% csrf_token %}
-                <button 
-                    type="submit" 
-                    class=" button-style {% if button.is_active %}active-button{% else %}inactive-button{% endif %}">
-                    {{ button.label }}
-                </button>
+                <button type="submit">Logout</button>
             </form>
-        {% endfor %}
-    </div>
-    {% else %}
-    <p>No buttons available for this device.</p>
-    {% endif %}
+        </div>
+    </header>
 
-    <form method="post" action="{% url 'logout' %}"  class="logout-form">
-        {% csrf_token %}
-        <button type="submit" class="button-style">Logout</button>
-    </form>
+    <div class="sub-header-container">
+        <form method="get" action="{% url 'home' %}">
+            <input type="hidden" name="next" value="{{ request.META.HTTP_REFERER }}">
+            <button class="home-button">Homepage</button>
+        </form>
+        <p> <b>Your device:</b> {{ device.name }} <br /> 
+            Connected to gateway with IP address: {{ gateway.ip_address }}</p>
+    </div>
+
+    <main class="main-content">
+
+        <section class="graph-section">
+            <h1>GRAPH <br />PLACEHOLDER</h1>
+        </section>
+
+        <section class="data-section">
+            <h3>Counters</h3>
+            {% if recent_data %}
+                <table style="border: 1px solid black; border-collapse: collapse;">
+                    <thead>
+                        <tr>
+                            <th>Timestamp</th>
+                            <th>Value</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for data in recent_data %}
+                            <tr>
+                                <td>{{ data.timestamp }}</td>
+                                <td>{{ data.value }}</td>
+                            </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            {% else %}
+                <p>No data records available for this device.</p>
+            {% endif %}
+        </section>
+
+        <section class="button-section">
+            <h3>Buttons</h3>
+            {% if buttons.exists %}
+            <div class="flex-container">
+                {% for button in buttons %}
+                    <form method="post" action="{% url 'toggle_button' button.id %}" style="margin: 0;">
+                        {% csrf_token %}
+                        <button 
+                            type="submit" 
+                            class="device-button {% if button.is_active %}active-button{% else %}inactive-button{% endif %}">
+                            {{ button.label }}
+                        </button>
+                    </form>
+                {% endfor %}
+            </div>
+            {% else %}
+            <p>No buttons available for this device.</p>
+            {% endif %}
+        </section>
+
+    </main>
+
 </body>
 </html>

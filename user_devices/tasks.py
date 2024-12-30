@@ -3,7 +3,6 @@ import time
 from celery import shared_task, group
 from .models import Device, Gateway
 from pymodbus.client import ModbusTcpClient
-from django.utils import timezone
 from redis import Redis 
 from redis.lock import Lock
 from .functions import read_modbus_registers, map_variables, compute_variables, store_data_in_database
