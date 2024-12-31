@@ -5,7 +5,8 @@
     {% load static %}
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <meta http-equiv="refresh" content="15">
+    <meta http-equiv="refresh" content="120">
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
     <link rel="stylesheet" href="{% static 'css/device.css' %}">
     <title>Your device: {{ device.name }}</title>
 </head>
@@ -36,35 +37,100 @@
     <main class="main-content">
 
         <section class="graph-section">
-            <h1>GRAPH <br />PLACEHOLDER</h1>
+            <h2>Chart</h2>
+        
+            <!-- Show an error if X or Y axis variables are not configured -->
+            {% if chart_error %}
+                <p style="color: black;">{{ chart_error }}</p>
+            {% else %}
+                <!-- The chart container -->
+                <div class="chart-container">
+                    <canvas id="deviceChart"></canvas>
+                </div>
+
+                <!-- Embed JSON data safely -->
+                <script id="chart-data" type="application/json">
+                    {
+                        "y_label": "{{ y_label }}",
+                        "x_data": {{ x_data|safe }},
+                        "y_data": {{ y_data|safe }}
+                    }
+                </script>
+
+                <style>
+                    #deviceChart {
+                        max-width: 100%;
+                        width: 800px;
+                        height: auto;
+                    }
+            
+                    .chart-container {
+                        width: 100%;
+                        margin: 0 auto;
+                        overflow-x: auto;
+                    }
+                </style>
+
+                <script>
+                    const data = JSON.parse(document.getElementById('chart-data').textContent);
+                    const ctx = document.getElementById('deviceChart').getContext('2d');
+                    const chart = new Chart(ctx, {
+                        type: 'line',
+                        data: {
+                            labels: data.x_data, // Time steps
+                            datasets: [
+                                {
+                                    label: data.y_label, // Y-variable label
+                                    data: data.y_data,  // Y-axis data
+                                    borderColor: 'red',
+                                    borderWidth: 2,
+                                    fill: false,
+                                }
+                            ]
+                        },
+                        options: {
+                            responsive: true,
+                            aspectRatio: 2,
+                            scales: {
+                                x: {
+                                    title: {
+                                        display: true,
+                                        text: 'Time'
+                                    }
+                                },
+                                y: {
+                                    title: {
+                                        display: true,
+                                        text: data.y_label
+                                    }
+                                }
+                            }
+                        }
+                    });
+                </script>
+            {% endif %}
         </section>
 
+        <!--style="border: 1px solid black; border-collapse: collapse;"-->
         <section class="data-section">
-            <h3>Counters</h3>
-            {% if recent_data %}
-                <table style="border: 1px solid black; border-collapse: collapse;">
-                    <thead>
-                        <tr>
-                            <th>Timestamp</th>
-                            <th>Value</th>
-                        </tr>
-                    </thead>
-                    <tbody>
-                        {% for data in recent_data %}
-                            <tr>
-                                <td>{{ data.timestamp }}</td>
-                                <td>{{ data.value }}</td>
-                            </tr>
-                        {% endfor %}
-                    </tbody>
-                </table>
+            <h2>Counters</h2>
+            {% if data %}
+            <div class="counter-list">
+                {% for key, val in data.data.items %}
+                <div class="counter-item">
+                    <span class="counter-name">{{ key }}:</span>
+                    <span class="counter-value">{{ val.value|floatformat:2 }}</span>
+                    <span class="counter-unit">{{ val.unit }}</span>
+                </div>
+                {% endfor %}
+            </div>
             {% else %}
                 <p>No data records available for this device.</p>
             {% endif %}
         </section>
 
         <section class="button-section">
-            <h3>Buttons</h3>
+            <h2>Buttons</h2>
             {% if buttons.exists %}
             <div class="flex-container">
                 {% for button in buttons %}

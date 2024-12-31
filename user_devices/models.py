@@ -1,5 +1,6 @@
 from django.db import models
 from django.contrib.auth.models import User
+from django.core.exceptions import ValidationError
 
 # Il device ha anche un ip associato
 class Gateway(models.Model):
@@ -36,9 +37,18 @@ class DeviceVariable(models.Model):
     )
     var_name = models.CharField(max_length=100, help_text="Name of the variable (e.g., Voltage, Power)")
     unit = models.CharField(max_length=20, help_text="Measurement unit (e.g., V, A, W)")
+    show_on_graph = models.BooleanField(default=False, help_text="Show this variable on the graph")
 
     class Meta:
         abstract = True
+
+    def save(self, *args, **kwargs):
+        # If this variable is selected as X-axis, deselect others as X-axis
+        if self.show_on_graph:
+            ComputedVariable.objects.filter(show_on_graph=True).exclude(pk=self.pk).update(show_on_graph=False)
+            MappingVariable.objects.filter(show_on_graph=True).exclude(pk=self.pk).update(show_on_graph=False)
+
+        super().save(*args, **kwargs)
 
 class MappingVariable(DeviceVariable):
     device = models.ForeignKey(Device, on_delete=models.CASCADE, related_name="mapped_variables")

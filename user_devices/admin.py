@@ -12,18 +12,21 @@ class GatewayAdmin(admin.ModelAdmin):
 class MemoryMappingInline(admin.StackedInline):
     model = MappingVariable
     extra = 0
-    fields = ('var_name', 'address', 'unit', 'conversion_factor')
+    fields = ('var_name', 'address', 'unit', 'conversion_factor','show_on_graph')
+
 
 class ComputedVariableInline(admin.StackedInline):
     model = ComputedVariable
     extra = 0
-    fields = ('var_name', 'unit', 'formula')
+    fields = ('var_name', 'unit', 'formula','show_on_graph')
+
 
 class DeviceAdmin(admin.ModelAdmin):
     list_display = ('name','user','Gateway','slave_id','start_address','bytes_count')
     list_filter = ('user','Gateway')
     search_fields = ('user','Gateway')
     inlines = [MemoryMappingInline, ComputedVariableInline]
+    actions = ['reset_axis_assignments']
 
     def get_inlines(self, request, obj=None):
         """
@@ -37,6 +40,10 @@ class DeviceAdmin(admin.ModelAdmin):
                 elif variable_type == "computed":
                     return [ComputedVariableInline]
         return super().get_inlines(request, obj)
+
+    def reset_axis_assignments(self, request, queryset):
+        queryset.update(is_x_axis=False, is_y_axis=False)
+        self.message_user(request, "Axis assignments reset.")
 
 class DeviceDataAdmin(admin.ModelAdmin):
     list_display = ('device_name', 'timestamp','user', 'gateway')

@@ -1,5 +1,6 @@
 import logging
 import time
+import json
 from sympy import sympify
 from pymodbus.client import ModbusTcpClient
 from .models import MappingVariable, ComputedVariable, DeviceData
@@ -59,12 +60,21 @@ def map_variables(base_values, device):
 
             # Apply conversion factor
             converted_value = raw_value * mapping.conversion_factor
-            mapped_values[mapping.var_name] = converted_value
+            mapped_values[mapping.var_name] = {
+                "value": converted_value,
+                "unit": mapping.unit 
+            }
 
         except Exception as e:
-            mapped_values[mapping.var_name] = 0
+            mapped_values[mapping.var_name] = {
+                "value": 0,
+                "unit": mapping.unit if hasattr(mapping, "unit") else "N/A"
+            }
             logger.info(f"Error while mapping the values: {e}")
             continue
+            # Convert to JSON
+    json_result = json.dumps(mapped_values, indent=4)
+    logger.info(f"Mapped JSON: {json_result}")
     return mapped_values
 
 
@@ -78,19 +88,33 @@ def compute_variables(mapped_values, device):
     results = {}
     for var in computed_vars:
         try:
+
+            "Work the data and adapt it to the sympify formula input data"
+            values = {key: value_data["value"] for key, value_data in mapped_values.items()}
+            logger.info(f"Worked data: {values}")
+
             formula = sympify(a=var.formula)
             logger.info(f"formula: {formula}")
 
-            computed_value = float(formula.evalf(subs=mapped_values))
+            computed_value = float(formula.evalf(subs=values))
             logger.info(f"Computed value: {computed_value}")
 
-            results[var.var_name] = computed_value
+            results[var.var_name] = {
+                "value": computed_value,
+                "unit": var.unit 
+            }
             logger.info(computed_vars)
         except Exception as e:
-            logger.info(f"Error computing variable {var.name}: {e}")
-            results[var.var_name] = 0
+            results[var.var_name] = {
+                "value": 0,
+                "unit": var.unit if hasattr(var, "unit") else "N/A"
+            }
+            logger.info(f"Error while mapping the values: {e}")
             continue
 
+    # Convert to JSON
+    json_result = json.dumps(results, indent=4)
+    logger.info(f"Mapped JSON: {json_result}")
     logger.info(f"Computed variables for device {device.name}: {computed_vars}")
     return results
 

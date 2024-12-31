@@ -47,10 +47,10 @@ def scan_and_read_devices(gateway_ip):
 
                         # Calcola valori combinazioni di letture precedenti
                         computed_values = compute_variables(mapped_values, device)
-                        logger.info(f"Values mapped: {computed_values}")
+                        logger.info(f"Values computed: {computed_values}")
 
                         values = {**mapped_values, **computed_values}
-                        logger.info(f"Values mapped: {values}")
+                        logger.info(f"Values: {values}")
                         store_data_in_database(device, values)
                         logger.info(f"Data have been saved")
                     except:
