@@ -70,6 +70,13 @@ section h2 {
     margin-bottom: 20px;
 }
 
+.button-container{
+    display: flex;
+    flex-wrap: wrap;
+    justify-content: space-around;
+    margin: 10px;
+}
+
 .button-section .device-button {
     padding: 10px 20px;
     border: 1px solid #007BFF;
@@ -81,15 +88,16 @@ section h2 {
     font-size: 14px;
     font-weight: bold;
     width: auto;
+    margin-left: 15px;
 }
 
 /* Specific styles for active and inactive buttons */
-.active-button {
+.button-section .device-button.active-button {
     background-color: #00FF00; 
     border-color: #00FF00;
 }
 
-.inactive-button {
+.button-section .device-button.inactive-button {
     background-color: #FF0000; 
     border-color: #FF0000;
 }
@@ -99,7 +107,7 @@ button:hover {
     opacity: 0.8;
 }
 
-button[type="submit"] {
+.logout-button {
     width: 100%;
     background-color: #ffffff;
     color: black;
@@ -113,7 +121,7 @@ button[type="submit"] {
     justify-self: right;
 }
 
-button[type="submit"]:hover {
+.logout-button:hover {
     background-color: #afafaf;
 }
 

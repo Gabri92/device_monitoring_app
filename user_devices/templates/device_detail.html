@@ -20,7 +20,7 @@
         <div class="logout-container">
             <form method="post" action="{% url 'logout' %}">
                 {% csrf_token %}
-                <button type="submit">Logout</button>
+                <button type="submit" class="logout-button">Logout</button>
             </form>
         </div>
     </header>
@@ -91,6 +91,7 @@
                         options: {
                             responsive: true,
                             aspectRatio: 2,
+                            maintainAspectRatio: false,
                             scales: {
                                 x: {
                                     title: {
@@ -107,6 +108,10 @@
                             }
                         }
                     });
+
+                    window.addEventListener("resize", () => {
+                        chart.resize();
+                        });
                 </script>
             {% endif %}
         </section>
@@ -132,7 +137,7 @@
         <section class="button-section">
             <h2>Buttons</h2>
             {% if buttons.exists %}
-            <div class="flex-container">
+            <div class="button-container">
                 {% for button in buttons %}
                     <form method="post" action="{% url 'toggle_button' button.id %}" style="margin: 0;">
                         {% csrf_token %}
