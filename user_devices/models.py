@@ -17,7 +17,7 @@ class Device(models.Model):
     user = models.ForeignKey(User, on_delete=models.CASCADE, related_name='user_device')
     Gateway = models.ForeignKey(Gateway, null=True, on_delete=models.CASCADE, related_name='devices')
     name = models.CharField(max_length=100, unique=True)
-    slave_id = models.IntegerField(default=-1, unique=True, help_text="Slave ID of the device(nr between 1 to 247)")
+    slave_id = models.IntegerField(default=-1, help_text="Slave ID of the device(nr between 1 to 247)")
     start_address = models.CharField(help_text="Starting Modbus address in hexadecimal (e.g., 0x0280)")
     bytes_count = models.PositiveIntegerField(default=1, help_text="Total number of consecutive bytes to read")
 

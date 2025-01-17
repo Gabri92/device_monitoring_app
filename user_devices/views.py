@@ -15,6 +15,10 @@ def base_redirect(request):
         return redirect('login/')
 
 def home_view(request):
+
+    if not request.user.is_authenticated:
+        return redirect('login')
+    
     user = request.user
     gateways = Gateway.objects.filter(user=user)
     devices = Device.objects.filter(user=user)
@@ -23,6 +27,7 @@ def home_view(request):
                    'gateways': gateways, 
                    'devices': devices
                    })  # Create a home.html template
+
 
 def device_detail_view(request,device_name):
     # Retrieve the device object
@@ -45,7 +50,7 @@ def device_detail_view(request,device_name):
 
     # Retrieve last data from the device
     counter_data = DeviceData.objects.filter(device_name=device).order_by('-timestamp').first()
-    if counter_data.data:
+    if counter_data:
         context["data"] = counter_data
 
     # Retrieve historic data for chart
@@ -55,10 +60,10 @@ def device_detail_view(request,device_name):
     if y_variable:
         
         # Example: Generate dummy time-series data for demonstration
-        chart_data = DeviceData.objects.filter(device_name=device).order_by('timestamp')[:20][::-1] 
+        chart_data = DeviceData.objects.filter(device_name=device).order_by('-timestamp')[:20][::-1]
         timestamps = [entry.timestamp.strftime("%Y-%m-%d %H:%M:%S") for entry in chart_data]
         x_data = timestamps  # Example X values
-        y_data = [entry.data[y_variable.var_name] for entry in chart_data] # Example Y values
+        y_data = [entry.data[y_variable.var_name].get("value", None) for entry in chart_data] # Example Y values
         # Assume you have logic to generate x_data and y_data
         context["x_data"] = json.dumps(x_data)
         context["y_data"] = json.dumps(y_data)

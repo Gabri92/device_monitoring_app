@@ -119,6 +119,14 @@ def compute_variables(mapped_values, device):
     return results
 
 """
+Compute energy as power integral
+"""
+def compute_energy(variables, device_data):
+    previous_data = device_data.order_by('-timestamp').first()
+    logger.info("DEBUG: ",previous_data)
+
+
+"""
 Save device data into the DeviceData model.
 """
 def store_data_in_database(device, data):

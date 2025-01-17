@@ -1,11 +1,11 @@
 import logging
 import time
 from celery import shared_task, group
-from .models import Device, Gateway
+from .models import Device, Gateway, DeviceData
 from pymodbus.client import ModbusTcpClient
 from redis import Redis 
 from redis.lock import Lock
-from .functions import read_modbus_registers, map_variables, compute_variables, store_data_in_database
+from .functions import read_modbus_registers, map_variables, compute_variables, compute_energy, store_data_in_database
 
 logger = logging.getLogger(__name__)
 
@@ -49,7 +49,13 @@ def scan_and_read_devices(gateway_ip):
                         computed_values = compute_variables(mapped_values, device)
                         logger.info(f"Values computed: {computed_values}")
 
+                        # Aggregate values in a single dictionary
                         values = {**mapped_values, **computed_values}
+
+                        # Compute energy
+                        device_data = DeviceData.objects.filter(device__name = device.name)
+                        energy_values = compute_energy(values, device_data)
+
                         logger.info(f"Values: {values}")
                         store_data_in_database(device, values)
                         logger.info(f"Data have been saved")
