@@ -54,7 +54,7 @@ class MappingVariable(DeviceVariable):
     device = models.ForeignKey(Device, on_delete=models.CASCADE, related_name="mapped_variables")
     address = models.CharField(default="",help_text="Address of the mapped value")
     unit = models.CharField(max_length=20, help_text="Measurement unit (e.g., V, A, Hz)")
-    conversion_factor = models.FloatField(default=1.0, help_text="Factor to convert raw data to physical value")
+    conversion_factor = models.CharField(default="1", help_text="Factor to convert raw data to physical value")
 
     def __str__(self):
         return f"{self.var_name}"

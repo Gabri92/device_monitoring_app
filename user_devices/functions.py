@@ -8,6 +8,7 @@ from .models import MappingVariable, ComputedVariable, DeviceData
 from decimal import Decimal
 from django.db.models import Sum
 from django.db.models.expressions import RawSQL
+from fractions import Fraction
 
 logger = logging.getLogger(__name__)
 
@@ -62,7 +63,19 @@ def map_variables(base_values, device):
             raw_value = base_values[address]
 
             # Apply conversion factor
-            converted_value = raw_value * mapping.conversion_factor
+            # Parse conversion factor with support for fractional and decimal inputs
+            try:
+                # Attempt to parse as float first
+                logger.info(f"Conv factor from mapping: {mapping.conversion_factor}")
+                if mapping.conversion_factor.__contains__("/"):
+                    conversion_factor = float(Fraction(mapping.conversion_factor))
+                else:
+                    conversion_factor = float(mapping.conversion_factor)
+            except (ValueError, TypeError, ZeroDivisionError):
+                logger.warning(f"Invalid conversion factor for {mapping.var_name}: {mapping.conversion_factor}. Defaulting to 0.")
+                conversion_factor = 0.0  # Default to 1 in case of failure
+            logger.info(f"Conversion factor: {conversion_factor}")
+            converted_value = raw_value * conversion_factor
             mapped_values[mapping.var_name] = {
                 "value": converted_value,
                 "unit": mapping.unit 
@@ -144,7 +157,7 @@ def compute_energy(variables, device_data):
             integral_value = previous_energy + (average_value * delta_time)
 
             logger.info(f"Computed integral value: {integral_value}")
-            logger.info(f"delta_time: {delta_time}, previouse_energy: {previous_energy}, previous_p: {previous_p}, current_p:{current_p}")
+            
             # Compute energy for different periods
             now = datetime.now(timezone.utc)
 
