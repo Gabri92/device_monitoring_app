@@ -53,10 +53,12 @@ def scan_and_read_devices(gateway_ip):
                         values = {**mapped_values, **computed_values}
 
                         # Compute energy
-                        device_data = DeviceData.objects.filter(device__name = device.name)
+                        device_data = DeviceData.objects.filter(device_name__name=device.name)
                         energy_values = compute_energy(values, device_data)
-
+                       
+                        values = {**values, **energy_values}
                         logger.info(f"Values: {values}")
+
                         store_data_in_database(device, values)
                         logger.info(f"Data have been saved")
                     except:

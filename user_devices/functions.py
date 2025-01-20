@@ -2,9 +2,12 @@ import logging
 import time
 import json
 from sympy import sympify
+from datetime import datetime, timezone, timedelta
 from pymodbus.client import ModbusTcpClient
 from .models import MappingVariable, ComputedVariable, DeviceData
 from decimal import Decimal
+from django.db.models import Sum
+from django.db.models.expressions import RawSQL
 
 logger = logging.getLogger(__name__)
 
@@ -122,9 +125,85 @@ def compute_variables(mapped_values, device):
 Compute energy as power integral
 """
 def compute_energy(variables, device_data):
-    previous_data = device_data.order_by('-timestamp').first()
-    logger.info("DEBUG: ",previous_data)
+    logger.info("Starting to compute integral values")
+    try:
+        # Get the most recent data
+        previous_data = device_data.order_by('-timestamp').first()
 
+        if previous_data and 'P' in previous_data.data and 'P' in variables:
+            # Calculate delta time
+            delta_time = (datetime.now(timezone.utc) - previous_data.timestamp).total_seconds()
+
+            # Calculate the average value of power
+            previous_p = previous_data.data.get('P', {}).get('value', 0)
+            current_p = variables.get('P', {}).get('value', 0)
+            average_value = (current_p + previous_p) / 2
+
+            # Compute the integral value
+            previous_energy = previous_data.data.get('Energy', {}).get('value', 0.0)
+            integral_value = previous_energy + (average_value * delta_time)
+
+            logger.info(f"Computed integral value: {integral_value}")
+            logger.info(f"delta_time: {delta_time}, previouse_energy: {previous_energy}, previous_p: {previous_p}, current_p:{current_p}")
+            # Compute energy for different periods
+            now = datetime.now(timezone.utc)
+
+            # Define date ranges
+            one_day_ago = now - timedelta(days=1)
+            one_week_ago = now - timedelta(weeks=1)
+            one_month_ago = now - timedelta(days=30)  # Approximate month as 30 days
+
+            # Use RawSQL to sum JSONB values
+            daily_energy = device_data.filter(timestamp__gte=one_day_ago).aggregate(
+                total_energy=Sum(
+                    RawSQL("CAST(data->'Energy'->>'value' AS DOUBLE PRECISION)", [])
+                )
+            )['total_energy'] or 0.0
+
+            weekly_energy = device_data.filter(timestamp__gte=one_week_ago).aggregate(
+                total_energy=Sum(
+                    RawSQL("CAST(data->'Energy'->>'value' AS DOUBLE PRECISION)", [])
+                )
+            )['total_energy'] or 0.0
+
+            monthly_energy = device_data.filter(timestamp__gte=one_month_ago).aggregate(
+                total_energy=Sum(
+                    RawSQL("CAST(data->'Energy'->>'value' AS DOUBLE PRECISION)", [])
+                )
+            )['total_energy'] or 0.0
+
+            # Store all computed values in a structured dictionary
+            energy_data = {
+                'Energy': {'value': integral_value, 'unit': 'J'},
+                'Energy_daily': {'value': daily_energy, 'unit': 'J'},
+                'Energy_weekly': {'value': weekly_energy, 'unit': 'J'},
+                'Energy_monthly': {'value': monthly_energy, 'unit': 'J'},
+            }
+
+            logger.info(f"Computed energy data: {energy_data}")
+            return energy_data
+
+        else:
+            # Initialize the integral value for the first entry
+            energy_data = {
+                'Energy': {'value': 0.0, 'unit': 'J'},
+                'Energy_daily': {'value': 0.0, 'unit': 'J'},
+                'Energy_weekly': {'value': 0.0, 'unit': 'J'},
+                'Energy_monthly': {'value': 0.0, 'unit': 'J'},
+            }
+            logger.info("No previous data or 'P' variable found, initializing energy values to 0")
+            return energy_data
+
+    except Exception as e:
+        logger.error(f"Error during computation: {e}", exc_info=True)
+        energy_data = {
+            'Energy': {'value': 0.0, 'unit': 'J'},
+            'Energy_daily': {'value': 0.0, 'unit': 'J'},
+                'Energy_weekly': {'value': 0.0, 'unit': 'J'},
+            'Energy_monthly': {'value': 0.0, 'unit': 'J'},
+        }
+        return energy_data
+        
 
 """
 Save device data into the DeviceData model.
