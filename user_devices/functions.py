@@ -186,11 +186,12 @@ def compute_energy(variables, device_data):
             )['total_energy'] or 0.0
 
             # Store all computed values in a structured dictionary
+            conv_factor_to_kwh =3.6 * 10**6
             energy_data = {
-                'Energy': {'value': integral_value, 'unit': 'J'},
-                'Energy_daily': {'value': daily_energy, 'unit': 'J'},
-                'Energy_weekly': {'value': weekly_energy, 'unit': 'J'},
-                'Energy_monthly': {'value': monthly_energy, 'unit': 'J'},
+                'Energy': {'value': integral_value  / conv_factor_to_kwh, 'unit': 'kWh'},
+                'Energy_daily': {'value': daily_energy / conv_factor_to_kwh, 'unit': 'kWh'},
+                'Energy_weekly': {'value': weekly_energy / conv_factor_to_kwh, 'unit': 'kWh'},
+                'Energy_monthly': {'value': monthly_energy / conv_factor_to_kwh, 'unit': 'kWh'},
             }
 
             logger.info(f"Computed energy data: {energy_data}")
