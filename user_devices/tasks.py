@@ -26,49 +26,54 @@ def scan_and_read_devices(gateway_ip):
     if lock.acquire(blocking=False):
         try:
             gateway = Gateway.objects.get(ip_address=gateway_ip)
-            client = ModbusTcpClient(gateway.ip_address, port=gateway.port)
-            connection = client.connect()
-            if connection:
-                logger.info(f"Connected to {gateway.ip_address}")
-                # Step 1: Scan devices
-                devices = Device.objects.all()
-                if not devices:
-                    logger.info(f"Connected to {gateway.ip_address}")
-                    return
-                for device in devices:
-                    try:
-                        # Legge valori raw da registro modbus
-                        base_values = read_modbus_registers(device, client)
-                        logger.info(f"Values read: {base_values}")
+            logger.info(f"Scanning devices for gateway {gateway.ip_address}")
 
-                        # Converte i valori grezzi nei valori base mappati su sito admin
-                        mapped_values = map_variables(base_values, device)
-                        logger.info(f"Values mapped: {mapped_values}")
+            # Get only devices connected to this gateway IP
+            devices = Device.objects.filter(Gateway = gateway)
+            if not devices:
+                logger.info(f"No devices found for gateway {gateway.ip_address}")
+                return
 
-                        # Calcola valori combinazioni di letture precedenti
-                        computed_values = compute_variables(mapped_values, device)
-                        logger.info(f"Values computed: {computed_values}")
+            for device in devices:
+                client = ModbusTcpClient(gateway.ip_address, port=device.port)
+                connection = client.connect()
+                if not connection:
+                    logger.warning(f"Failed to connect to device on {gateway.ip_address}:{device.port}")
+                    client.close()
+                    continue
 
-                        # Aggregate values in a single dictionary
-                        values = {**mapped_values, **computed_values}
+                logger.info(f"Connected to device {device.name} on {gateway.ip_address}:{device.port}")
+                try:
+                    # Step 1: Read raw Modbus registers
+                    base_values = read_modbus_registers(device, client)
+                    logger.info(f"Values read: {base_values}")
 
-                        # Compute energy
-                        device_data = DeviceData.objects.filter(device_name__name=device.name)
-                        energy_values = compute_energy(values, device_data)
-                       
-                        values = {**values, **energy_values}
-                        logger.info(f"Values: {values}")
+                    # Step 2: Map raw values
+                    mapped_values = map_variables(base_values, device)
+                    logger.info(f"Values mapped: {mapped_values}")
 
-                        store_data_in_database(device, values)
-                        logger.info(f"Data have been saved")
-                    except:
-                        logger.info(f"Error while reading the values")
-                        continue
-            else:
-               logger.info(f"Failed to connect to {gateway.ip_address}. ")
-               return
+                    # Step 3: Compute derived variables
+                    computed_values = compute_variables(mapped_values, device)
+                    logger.info(f"Values computed: {computed_values}")
+
+                    # Step 4: Merge values
+                    values = {**mapped_values, **computed_values}
+
+                    # Step 5: Compute energy
+                    device_data = DeviceData.objects.filter(device_name__name=device.name)
+                    energy_values = compute_energy(values, device_data)
+                    values.update(energy_values)
+                    logger.info(f"Final values: {values}")
+
+                    # Step 6: Store in DB
+                    store_data_in_database(device, values)
+                    logger.info(f"Data saved for device {device.name}")
+
+                except Exception as e:
+                    logger.error(f"Error while reading values for device {device.name}: {e}")
+                finally:
+                    client.close()
         finally:
-            client.close()
             lock.release()
 
 

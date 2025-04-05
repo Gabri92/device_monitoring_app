@@ -4,23 +4,24 @@ from django.core.exceptions import ValidationError
 
 # Il device ha anche un ip associato
 class Gateway(models.Model):
-    user = models.ForeignKey(User, on_delete=models.CASCADE, related_name='user_gateway')
+    user = models.ManyToManyField(User, related_name='user_gateway')
+    name = models.CharField(max_length=50, default='not assigned') 
     ssh_username = models.CharField(max_length=50, default='ssh_user')  # SSH username
     ssh_password = models.CharField(max_length=100, default='ssh_psw')  # SSH password
     ip_address = models.CharField(max_length=50)
-    port = models.IntegerField(default=502)
 
     def __str__(self):
-        return f"Device user: {self.user}, Ip address: {self.ip_address}"
+        return f"Name: {self.name}, Ip address: {self.ip_address}"
 
 class Device(models.Model):
-    user = models.ForeignKey(User, on_delete=models.CASCADE, related_name='user_device')
+    user = models.ManyToManyField(User, related_name='user_device')
     Gateway = models.ForeignKey(Gateway, null=True, on_delete=models.CASCADE, related_name='devices')
     name = models.CharField(max_length=100, unique=True)
     slave_id = models.IntegerField(default=-1, help_text="Slave ID of the device(nr between 1 to 247)")
     start_address = models.CharField(help_text="Starting Modbus address in hexadecimal (e.g., 0x0280)")
     bytes_count = models.PositiveIntegerField(default=1, help_text="Total number of consecutive bytes to read")
-
+    port = models.IntegerField(default=502)
+    
     def __str__(self):
         return f"{self.name}"
 
@@ -70,8 +71,8 @@ class ComputedVariable(DeviceVariable):
         return f"{self.var_name} (Computed)"
 
 class DeviceData(models.Model):
-    user = models.ForeignKey(User, on_delete=models.CASCADE, related_name='user_device_data')
-    gateway = models.ForeignKey(Gateway, on_delete=models.CASCADE, related_name='gateway_data')
+    user = models.ManyToManyField(User, related_name='user_device_data')
+    Gateway = models.ForeignKey(Gateway, on_delete=models.CASCADE, related_name='gateway_data')
     device_name = models.ForeignKey(Device, on_delete=models.CASCADE, related_name='device_data')
     data = models.JSONField()
     timestamp = models.DateTimeField(auto_now_add=True)
@@ -87,4 +88,4 @@ class Button(models.Model):
     show_in_user_page = models.BooleanField(default=False)  # Show this button to users
 
     def __str__(self):
-        return f"{self.Gateway.user} ({self.Gateway})"
+        return f"{self.Gateway.name}, {self.Gateway.ip_address}"
