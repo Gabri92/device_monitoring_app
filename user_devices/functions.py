@@ -29,6 +29,7 @@ def read_modbus_registers(device, client):
         logger.info(f"Start Address: {start_address}")
         bytes_count = device.bytes_count 
         logger.info(f"Start Address: {bytes_count }")
+        
         # Split reads into chunks of MAX_WORDS_PER_READ
         base_values = {}
         for offset in range(0, bytes_count, MAX_WORDS_PER_READ):

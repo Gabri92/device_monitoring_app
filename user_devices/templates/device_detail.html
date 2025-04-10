@@ -3,6 +3,7 @@
     
 <head>
     {% load static %}
+    {% load display_filters %}
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <meta http-equiv="refresh" content="120">
@@ -124,7 +125,7 @@
             <div class="counter-list">
                 {% for key, val in data.data.items %}
                 <div class="counter-item">
-                    <span class="counter-name">{{ key }}:</span>
+                    <span class="counter-name">{{ key|display_varname }}:</span>
                     <span class="counter-value">{{ val.value|floatformat:2 }}</span>
                     <span class="counter-unit">{{ val.unit }}</span>
                 </div>
