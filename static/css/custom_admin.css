@@ -1,0 +1,6 @@
+/* Make filter_horizontal box smaller */
+.selector-available, .selector-chosen {
+    min-height: 100px;  /* Default is 200px */
+    max-height: 150px;
+    width: 220px;        /* Optional: shrink width */
+}

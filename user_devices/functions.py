@@ -15,6 +15,10 @@ logger = logging.getLogger(__name__)
 MAX_WORDS_PER_READ = 12
 TIMEOUT = 5                 # Timeout per la connessione
 
+# Helper to sanitize variable names
+def sanitize_variable_name(name):
+    return name.replace("-", "_").replace(" ", "_")
+
 """
 Reads Modbus registers for a given device.
 Handles multiple reads if needed due to word limits.
@@ -22,12 +26,14 @@ Handles multiple reads if needed due to word limits.
 def read_modbus_registers(device, client):
     try:
         start_address = int(device.start_address, 16)
+        logger.info(f"Start Address: {start_address}")
         bytes_count = device.bytes_count 
-
+        logger.info(f"Start Address: {bytes_count }")
         # Split reads into chunks of MAX_WORDS_PER_READ
         base_values = {}
         for offset in range(0, bytes_count, MAX_WORDS_PER_READ):
             current_address = start_address + offset
+            logger.info(f"Start Address: {current_address}")
             words_to_read = min(MAX_WORDS_PER_READ, (bytes_count - offset) // 2)
             response = client.read_input_registers(address=current_address, count=words_to_read,slave=device.slave_id)
             if response.isError():
@@ -76,13 +82,15 @@ def map_variables(base_values, device):
                 conversion_factor = 0.0  # Default to 1 in case of failure
             logger.info(f"Conversion factor: {conversion_factor}")
             converted_value = raw_value * conversion_factor
-            mapped_values[mapping.var_name] = {
+            sanitized_name = sanitize_variable_name(mapping.var_name)
+            mapped_values[sanitized_name] = {
                 "value": converted_value,
                 "unit": mapping.unit 
             }
 
         except Exception as e:
-            mapped_values[mapping.var_name] = {
+            sanitized_name = sanitize_variable_name(mapping.var_name)
+            mapped_values[sanitized_name] = {
                 "value": 0,
                 "unit": mapping.unit if hasattr(mapping, "unit") else "N/A"
             }
@@ -109,7 +117,8 @@ def compute_variables(mapped_values, device):
             values = {key: value_data["value"] for key, value_data in mapped_values.items()}
             logger.info(f"Worked data: {values}")
 
-            formula = sympify(a=var.formula)
+            sanitized_formula = sanitize_variable_name(var.formula)
+            formula = sympify(a=sanitized_formula)
             logger.info(f"formula: {formula}")
 
             computed_value = float(formula.evalf(subs=values))
@@ -224,11 +233,12 @@ Save device data into the DeviceData model.
 """
 def store_data_in_database(device, data):
     try:
-        DeviceData.objects.create(
-            user=device.user,
-            gateway=device.Gateway,
+        dev_data = DeviceData.objects.create(
+            Gateway=device.Gateway,
             device_name=device,
             data=data
         )
+        if hasattr(device, "user"):
+            dev_data.user.set(device.user.all())
     except Exception as e:
         logger.info(f"Error while saving the data: {e}")

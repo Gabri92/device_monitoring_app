@@ -1,4 +1,5 @@
 import logging
+
 import time
 from celery import shared_task, group
 from .models import Device, Gateway, DeviceData
