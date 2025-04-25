@@ -6,3 +6,4 @@ docs/images/*
 .coverage
 htmlconv
 htmlconv/*
+.cursor/rules
