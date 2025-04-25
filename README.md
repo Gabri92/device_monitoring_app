@@ -45,6 +45,6 @@ To run the app in production mode it is necessary to install and configure a web
 ## Next steps
 <ul>
   <li> Improve the user's page graphics  :white_check_mark: </li>
-  <li> Adding unit test </li>
+  <li> Adding unit test :warning: </li>
   <li> Include a web server like Apache or Nginx for serving the webapp with Docker </li>
 </ul>
