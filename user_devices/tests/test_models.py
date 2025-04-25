@@ -8,25 +8,29 @@ class UserDevicesTestCase(TestCase):
     def setUp(self):
         # Create test user
         self.user = User.objects.create_user(username='testuser', password='testpass')
-        
+
         # Create test device
         self.gateway = Gateway.objects.create(
-            user = self.user,
             ssh_username="ssh_testuser",
             ssh_password="ssh_testpass",
-            ip_address="192.168.1.100",
-            port=502
+            ip_address="192.168.1.100"
         )
+
+        # Add user to M2M field after creation
+        self.gateway.user.add(self.user)
 
         # Create test device
         self.device = Device.objects.create(
             name="Test_Device",
             Gateway=self.gateway,
-            user=self.user,
             slave_id=1,
             start_address="0x0280",
-            bytes_count=80
+            bytes_count=80,
+            port=502
         )
+
+        # Add user to M2M field after creation
+        self.device.user.add(self.user)
 
         # Create test button
         self.button = Button.objects.create(
@@ -51,7 +55,7 @@ class UserDevicesTestCase(TestCase):
         self.assertEqual(response.status_code, 200)
         self.assertContains(response, "Test_Device")
 
-    def test_button_toggle(self): #TODO: Fix this test
+    def test_button_toggle_in_db(self):
         self.button.is_active = not self.button.is_active
         self.button.save()
         self.assertEqual(self.button.is_active, True)

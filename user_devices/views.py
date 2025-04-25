@@ -6,6 +6,7 @@ from django.shortcuts import render, get_object_or_404
 from .models import Device, Button, Gateway, ComputedVariable, MappingVariable, DeviceData
 from django.shortcuts import redirect
 from .commands import set_pin_status
+from user_devices.functions import sanitize_variable_name  # or wherever it is
 import json
 
 def base_redirect(request):
@@ -63,7 +64,8 @@ def device_detail_view(request,device_name):
         chart_data = DeviceData.objects.filter(device_name=device).order_by('-timestamp')[:20][::-1]
         timestamps = [entry.timestamp.strftime("%Y-%m-%d %H:%M:%S") for entry in chart_data]
         x_data = timestamps  # Example X values
-        y_data = [entry.data[y_variable.var_name].get("value", None) for entry in chart_data] # Example Y values
+        sanitized_name = sanitize_variable_name(y_variable.var_name)
+        y_data = [entry.data.get(sanitized_name, {}).get("value", None) for entry in chart_data]
         # Assume you have logic to generate x_data and y_data
         context["x_data"] = json.dumps(x_data)
         context["y_data"] = json.dumps(y_data)

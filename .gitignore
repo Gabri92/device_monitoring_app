@@ -3,3 +3,6 @@ docs/*
 docs/images/*
 
 .codegpt
+.coverage
+htmlconv
+htmlconv/*

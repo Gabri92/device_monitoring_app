@@ -1,0 +1,105 @@
+CORE TESTS TO DO:
+
+1. read_modbus_registers:
+	Handling very large byte counts that require multiple reads
+	Zero byte count
+	Client connection timeouts
+	Partial success (some reads fail, others succeed)
+2. map_variables:
+	Empty base_values
+	No mappings for the device
+	Extreme conversion factors (very large or very small)
+	Special characters in variable names
+3. compute_variables:
+	Circular dependencies in formulas
+	Division by zero
+	Complex mathematical expressions
+	Variables with special characters
+4. compute_energy:
+	First data point (no previous data)
+	Very large time gaps between readings
+	Negative power values
+	Extremely small time intervals
+5. store_data_in_database:
+	Very large JSON data
+	Special characters in data
+	Device with no users
+	
+	
+	
+COMMANDS:
+
+1. docker-compose exec web manage.py test user_devices.tests.test_core_funcs
+
+2. docker-compose exec web coverage run --source=user_devices.functions manage.py test user_devices.tests.test_core_funcs
+
+3. docker-compose exec web coverage report -m
+
+4. docker-compose exec web coverage html
+
+
+OTHER TESTS TO DO:
+
+Looking at your project structure, here are the key areas you should test beyond functions.py:
+
+Models Tests
+1. Gateway Model:
+	Create/update/delete operations
+	Validate string representation
+	Validate user associations
+2. Device Model:
+	Validate start_address format
+	Test foreign key relationships
+	Test user permissions
+3. DeviceVariable Models:
+	Test abstract class behavior
+	Test show_on_graph exclusivity (only one variable selected)
+	Validate formula syntax in ComputedVariable
+4. DeviceData Model:
+	Test JSON data storage
+	Test timestamp auto-creation
+
+Views Tests
+5. home_view:
+	Test context data contains correct devices/gateways
+	Test authentication requirements
+6. device_detail_view:
+	Test correct data/chart preparation
+	Test permission checks (users can only view their own devices)
+	Test with and without data history
+7. toggle_button_status:
+	Test button state changes
+	Test permission verification
+	Test error handling
+
+Signals Tests
+8. sync_users_to_devices_and_data:
+	Test user propagation from Gateway to Devices
+	Test user propagation to DeviceData
+
+Tasks Tests
+9. scan_and_read_devices:
+	Test Redis lock mechanism
+	Test device scanning logic
+	Test error handling during scanning
+10. check_all_devices:
+	Test task group creation
+
+Commands Tests
+11. execute_ssh_command:
+	Test successful command execution
+	Test error handling
+12. set_pin_status:
+	Test pin state changes
+
+Integration Tests
+13. End-to-end device reading workflow:
+	Gateway → Devices → Read values → Store data
+14. User permission propagation:
+	Adding users to Gateway updates all related models
+
+I see you've already started with some view and model tests in tests.py, which is a good foundation. Your existing tests cover:
+	Device and Button creation
+	View responses and authentication
+	Button toggling
+Focus next on the Celery tasks and signals, as they contain critical business logic for your application.
