@@ -22,6 +22,8 @@ class Device(models.Model):
     bytes_count = models.PositiveIntegerField(default=1, help_text="Total number of consecutive bytes to read")
     port = models.IntegerField(default=502)
     
+    class Meta:
+        ordering = ['id']  
     def __str__(self):
         return f"{self.name}"
 
@@ -39,8 +41,10 @@ class DeviceVariable(models.Model):
     var_name = models.CharField(max_length=100, help_text="Name of the variable (e.g., Voltage, Power)")
     unit = models.CharField(max_length=20, help_text="Measurement unit (e.g., V, A, W)")
     show_on_graph = models.BooleanField(default=False, help_text="Show this variable on the graph")
+    order = models.PositiveIntegerField(default=0)  # 🆕 for sorting
 
     class Meta:
+        ordering = ['order']  # Ensure sorted display
         abstract = True
 
     def save(self, *args, **kwargs):

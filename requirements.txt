@@ -6,3 +6,4 @@ paramiko
 sympy
 coverage
 pytest
+django-admin-sortable2

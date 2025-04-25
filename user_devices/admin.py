@@ -3,6 +3,7 @@ from .models import User, Gateway, Device, DeviceVariable, MappingVariable, Comp
 from .commands import set_pin_status
 from django.utils.html import format_html
 from django.urls import reverse
+from adminsortable2.admin import  SortableInlineAdminMixin, SortableAdminBase
 
 class GatewayAdmin(admin.ModelAdmin):
     list_display = ('ip_address', 'get_users')
@@ -26,19 +27,19 @@ class GatewayAdmin(admin.ModelAdmin):
                 for data in device.device_data.all():
                     data.user.add(user)
 
-class MemoryMappingInline(admin.StackedInline):
+class MemoryMappingInline(SortableInlineAdminMixin, admin.StackedInline):
     model = MappingVariable
     extra = 0
     fields = ('var_name', 'address', 'unit', 'conversion_factor','show_on_graph')
+    sortable = 'order' 
 
-
-class ComputedVariableInline(admin.StackedInline):
+class ComputedVariableInline(SortableInlineAdminMixin, admin.StackedInline):
     model = ComputedVariable
     extra = 0
     fields = ('var_name', 'unit', 'formula','show_on_graph')
+    sortable = 'order' 
 
-
-class DeviceAdmin(admin.ModelAdmin):
+class DeviceAdmin(SortableAdminBase, admin.ModelAdmin):
     list_display = ('name','get_users','Gateway__name', 'Gateway__ip_address', 'slave_id','start_address','bytes_count')
     list_filter = ('user','Gateway')
     search_fields = ('user','Gateway')
