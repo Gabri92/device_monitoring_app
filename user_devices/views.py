@@ -52,7 +52,32 @@ def device_detail_view(request,device_name):
     # Retrieve last data from the device
     counter_data = DeviceData.objects.filter(device_name=device).order_by('-timestamp').first()
     if counter_data:
-        context["data"] = counter_data
+        # Create a filtered copy of the data with only selected energy metrics
+        filtered_data = {}
+        for key, val in counter_data.data.items():
+            # Always include non-energy data
+            if not key.startswith('Energy'):
+                filtered_data[key] = val
+                continue
+                
+            # Include basic energy metrics
+            if key in ['Energy', 'Energy_produced', 'Energy_consumed']:
+                filtered_data[key] = val
+                continue
+                
+            # Filter daily/weekly/monthly based on settings
+            if key == 'Energy' and device.show_energy:
+                filtered_data[key] = val
+            elif key in ['Energy_produced', 'Energy_consumed'] and device.show_energy:
+                filtered_data[key] = val
+            elif device.show_energy_daily and key.startswith('Energy_daily'):
+                filtered_data[key] = val
+            elif device.show_energy_weekly and key.startswith('Energy_weekly'):
+                filtered_data[key] = val
+            elif device.show_energy_monthly and key.startswith('Energy_monthly'):
+                filtered_data[key] = val
+                
+        context["data"] = {"data": filtered_data}
 
     # Retrieve historic data for chart
     y_variable = ComputedVariable.objects.filter(device=device, show_on_graph=True).first() or \

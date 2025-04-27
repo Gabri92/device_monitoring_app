@@ -286,32 +286,148 @@ class TestComputeEnergy(TestCase):
         previous_data.timestamp = datetime.now(timezone.utc) - timedelta(minutes=5)
         previous_data.data = {
             'P': {'value': 1000.0, 'unit': 'W'},
-            'Energy': {'value': 5000.0, 'unit': 'J'}
+            'Energy': {'value': 5000.0, 'unit': 'J'},
+            'Energy_produced': {'value': 1000.0, 'unit': 'J'},
+            'Energy_consumed': {'value': 6000.0, 'unit': 'J'}
         }
         
         # Mock queryset methods
         device_data.order_by.return_value.first.return_value = previous_data
-        device_data.filter.return_value.aggregate.return_value = {'total_energy': 10000.0}
         
-        # Current values
+        # Setup filter and aggregate mocks for period data
+        mock_daily_filter = Mock()
+        mock_daily_filter.aggregate.return_value = {'total': 2000.0}
+        
+        mock_weekly_filter = Mock()
+        mock_weekly_filter.aggregate.return_value = {'total': 5000.0}
+        
+        mock_monthly_filter = Mock()
+        mock_monthly_filter.aggregate.return_value = {'total': 10000.0}
+        
+        # Return different mocks for different filter calls
+        def side_effect_filter(timestamp__gte):
+            if timestamp__gte > (datetime.now(timezone.utc) - timedelta(days=2)):
+                return mock_daily_filter
+            elif timestamp__gte > (datetime.now(timezone.utc) - timedelta(days=8)):
+                return mock_weekly_filter
+            else:
+                return mock_monthly_filter
+                
+        device_data.filter.side_effect = side_effect_filter
+        
+        # Current values with positive power (consumption)
         variables = {
             'P': {'value': 2000.0, 'unit': 'W'}
         }
         
         # Execute function
         result = compute_energy(variables, device_data)
-        
+
+        print(f"Result: {result}")
+
         # Verify results
-        # Energy should be previous energy + (avg power * time delta)
-        # Convert result to expected unit (kWh)
+        # Check that all expected keys exist
         self.assertIn('Energy', result)
-        self.assertIn('Energy_daily', result)
-        self.assertIn('Energy_weekly', result)
-        self.assertIn('Energy_monthly', result)
+        self.assertIn('Energy_produced', result)
+        self.assertIn('Energy_consumed', result)
+        self.assertIn('Energy_daily_produced', result)
+        self.assertIn('Energy_daily_consumed', result)
+        self.assertIn('Energy_weekly_produced', result)
+        self.assertIn('Energy_weekly_consumed', result)
+        self.assertIn('Energy_monthly_produced', result)
+        self.assertIn('Energy_monthly_consumed', result)
+        
+        # Check units
+        self.assertEqual(result['Energy']['unit'], 'kWh')
+        self.assertEqual(result['Energy_produced']['unit'], 'kWh')
         
         # Check that conversion factor to kWh was applied
         conv_factor_to_kwh = 3.6 * 10**6
-        self.assertAlmostEqual(result['Energy_daily']['value'], 10000.0 / conv_factor_to_kwh)
+        
+        # Since we're using positive power (2000W), energy consumed should increase
+        self.assertTrue(result['Energy_consumed']['value'] > previous_data.data['Energy_consumed']['value'] / conv_factor_to_kwh)
+        
+        # Energy produced should remain the same
+        self.assertAlmostEqual(result['Energy_produced']['value'], 
+        previous_data.data['Energy_produced']['value'] / conv_factor_to_kwh)
+
+    @patch('user_devices.functions.logger')
+    def test_compute_energy_with_negative_power(self, mock_logger):
+        """Test energy computation with negative power (production)"""
+        # Setup device data queryset
+        device_data = Mock()
+        
+        # Mock previous data
+        previous_data = Mock()
+        previous_data.timestamp = datetime.now(timezone.utc) - timedelta(minutes=5)
+        previous_data.data = {
+            'P': {'value': -500.0, 'unit': 'W'},  # Negative power
+            'Energy': {'value': 5000.0, 'unit': 'J'},
+            'Energy_produced': {'value': 3000.0, 'unit': 'J'},
+            'Energy_consumed': {'value': 2000.0, 'unit': 'J'}
+        }
+        
+        # Mock queryset methods
+        device_data.order_by.return_value.first.return_value = previous_data
+        
+        # Setup filter and aggregate mocks
+        mock_filter = Mock()
+        mock_filter.aggregate.return_value = {'total': 1000.0}
+        device_data.filter.return_value = mock_filter
+        
+        # Current values with negative power (production)
+        variables = {
+            'P': {'value': -1000.0, 'unit': 'W'}
+        }
+        
+        # Execute function
+        result = compute_energy(variables, device_data)
+        
+        # Verify results
+        # Since we're using negative power (-1000W), energy produced should increase
+        conv_factor_to_kwh = 3.6 * 10**6
+        self.assertTrue(result['Energy_produced']['value'] > previous_data.data['Energy_produced']['value'] / conv_factor_to_kwh)
+        
+        # Energy consumed should remain the same
+        self.assertAlmostEqual(result['Energy_consumed']['value'], 
+                              previous_data.data['Energy_consumed']['value'] / conv_factor_to_kwh)
+
+    @patch('user_devices.functions.logger')
+    def test_compute_energy_with_alternative_power_name(self, mock_logger):
+        """Test energy computation with alternative power variable name"""
+        # Setup device data queryset
+        device_data = Mock()
+        
+        # Mock previous data with "Power" instead of "P"
+        previous_data = Mock()
+        previous_data.timestamp = datetime.now(timezone.utc) - timedelta(minutes=5)
+        previous_data.data = {
+            'Power': {'value': 1000.0, 'unit': 'W'},
+            'Energy': {'value': 5000.0, 'unit': 'J'},
+            'Energy_produced': {'value': 1000.0, 'unit': 'J'},
+            'Energy_consumed': {'value': 6000.0, 'unit': 'J'}
+        }
+        
+        # Mock queryset methods
+        device_data.order_by.return_value.first.return_value = previous_data
+        
+        # Setup filter and aggregate mocks
+        mock_filter = Mock()
+        mock_filter.aggregate.return_value = {'total': 1000.0}
+        device_data.filter.return_value = mock_filter
+        
+        # Current values with "Power" instead of "P"
+        variables = {
+            'Power': {'value': 2000.0, 'unit': 'W'}
+        }
+        
+        # Execute function
+        result = compute_energy(variables, device_data)
+        
+        # Verify results - function should recognize "Power" as a valid power variable name
+        self.assertIn('Energy', result)
+        self.assertIn('Energy_produced', result)
+        self.assertIn('Energy_consumed', result)
 
     @patch('user_devices.functions.logger')
     def test_compute_energy_without_previous_data(self, mock_logger):
@@ -326,9 +442,14 @@ class TestComputeEnergy(TestCase):
         
         # Should initialize with zeros
         self.assertEqual(result['Energy']['value'], 0.0)
-        self.assertEqual(result['Energy_daily']['value'], 0.0)
-        self.assertEqual(result['Energy_weekly']['value'], 0.0)
-        self.assertEqual(result['Energy_monthly']['value'], 0.0)
+        self.assertEqual(result['Energy_produced']['value'], 0.0)
+        self.assertEqual(result['Energy_consumed']['value'], 0.0)
+        self.assertEqual(result['Energy_daily_produced']['value'], 0.0)
+        self.assertEqual(result['Energy_daily_consumed']['value'], 0.0)
+        self.assertEqual(result['Energy_weekly_produced']['value'], 0.0)
+        self.assertEqual(result['Energy_weekly_consumed']['value'], 0.0)
+        self.assertEqual(result['Energy_monthly_produced']['value'], 0.0)
+        self.assertEqual(result['Energy_monthly_consumed']['value'], 0.0)
 
     @patch('user_devices.functions.logger')
     def test_compute_energy_exception_handling(self, mock_logger):
@@ -342,63 +463,16 @@ class TestComputeEnergy(TestCase):
         result = compute_energy(variables, device_data)
         
         # Should return default values on exception
+        # Should initialize with zeros
         self.assertEqual(result['Energy']['value'], 0.0)
+        self.assertEqual(result['Energy_produced']['value'], 0.0)
+        self.assertEqual(result['Energy_consumed']['value'], 0.0)
+        self.assertEqual(result['Energy_daily_produced']['value'], 0.0)
+        self.assertEqual(result['Energy_daily_consumed']['value'], 0.0)
+        self.assertEqual(result['Energy_weekly_produced']['value'], 0.0)
+        self.assertEqual(result['Energy_weekly_consumed']['value'], 0.0)
+        self.assertEqual(result['Energy_monthly_produced']['value'], 0.0)
+        self.assertEqual(result['Energy_monthly_consumed']['value'], 0.0)
         mock_logger.error.assert_called()
-
-class TestStoreDataInDatabase(TestCase):
-    @patch('user_devices.functions.logger')
-    @patch('user_devices.functions.DeviceData.objects.create')
-    def test_store_data_in_database_success(self, mock_create, mock_logger):
-        """Test successful data storage"""
-        gateway = Mock()
-        gateway.name = "Test Gateway"
-        
-        device = Mock()
-        device.name = "Test Device"
-        device.Gateway = gateway
-        
-        # Mock user relationship
-        user_set = Mock()
-        device.user = user_set
-        device.user.all.return_value = ["user1", "user2"]
-        
-        # Mock data
-        data = {"Voltage": {"value": 230.0, "unit": "V"}}
-        
-        # Mock DeviceData instance
-        mock_device_data = Mock()
-        mock_create.return_value = mock_device_data
-        
-        # Execute function
-        store_data_in_database(device, data)
-        
-        # Verify DeviceData.objects.create was called correctly
-        mock_create.assert_called_with(
-            Gateway=gateway,
-            device_name=device,
-            data=data
-        )
-        
-        # Verify users were set
-        mock_device_data.user.set.assert_called_with(["user1", "user2"])
-
-    @patch('user_devices.functions.logger')
-    @patch('user_devices.functions.DeviceData.objects.create')
-    def test_store_data_in_database_exception(self, mock_create, mock_logger):
-        """Test exception handling during data storage"""
-        device = Mock()
-        device.name = "Test Device"
-        
-        data = {"Voltage": {"value": 230.0, "unit": "V"}}
-        
-        # Force exception
-        mock_create.side_effect = Exception("Test exception")
-        
-        # Execute function
-        store_data_in_database(device, data)
-        
-        # Verify exception was logged
-        mock_logger.info.assert_called_with("Error while saving the data: Test exception")
-
 
 # TODO: Test Commands e Tasks

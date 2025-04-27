@@ -153,18 +153,47 @@ def compute_energy(variables, device_data):
         # Get the most recent data
         previous_data = device_data.order_by('-timestamp').first()
 
-        if previous_data and 'P' in previous_data.data and 'P' in variables:
+        # Define possible power variable names
+        power_variable_names = ['P', 'Power', 'Potenza']
+
+        power_name = None
+        is_power_configured = False
+        for name in power_variable_names:
+            if name in previous_data.data and name in variables:
+                power_name = name
+                is_power_configured = True
+                break
+
+        if previous_data and is_power_configured:
             # Calculate delta time
             delta_time = (datetime.now(timezone.utc) - previous_data.timestamp).total_seconds()
 
             # Calculate the average value of power
-            previous_p = previous_data.data.get('P', {}).get('value', 0)
-            current_p = variables.get('P', {}).get('value', 0)
+            previous_p = previous_data.data.get(power_name, {}).get('value', 0)
+            current_p = variables.get(power_name, {}).get('value', 0)
             average_value = (current_p + previous_p) / 2
 
-            # Compute the integral value
+            # Compute the energy increment for this period
+            energy_increment = average_value * delta_time
+
+            # Get previous energy values
             previous_energy = previous_data.data.get('Energy', {}).get('value', 0.0)
-            integral_value = previous_energy + (average_value * delta_time)
+            previous_energy_produced = previous_data.data.get('Energy_produced', {}).get('value', 0.0)
+            previous_energy_consumed = previous_data.data.get('Energy_consumed', {}).get('value', 0.0)
+           
+            # Update produced/consumed based on the sign of energy increment
+            # Negative power = energy produced, Positive power = energy consumed
+            if average_value >= 0:
+                # Consumption (positive power)
+                energy_consumed = previous_energy_consumed + energy_increment
+                energy_produced = previous_energy_produced
+            else:
+                # Production (negative power)
+                energy_produced = previous_energy_produced + abs(energy_increment)
+                energy_consumed = previous_energy_consumed
+
+            # Total energy is still the running sum of all increments
+            integral_value = previous_energy + energy_increment
 
             logger.info(f"Computed integral value: {integral_value}")
             
@@ -176,33 +205,56 @@ def compute_energy(variables, device_data):
             one_week_ago = now - timedelta(weeks=1)
             one_month_ago = now - timedelta(days=30)  # Approximate month as 30 days
 
-            # Use RawSQL to sum JSONB values
-            daily_energy = device_data.filter(timestamp__gte=one_day_ago).aggregate(
-                total_energy=Sum(
-                    RawSQL("CAST(data->'Energy'->>'value' AS DOUBLE PRECISION)", [])
-                )
-            )['total_energy'] or 0.0
+             # Calculate daily produced/consumed energy
+            daily_records = device_data.filter(timestamp__gte=one_day_ago)
+            daily_produced = daily_records.aggregate(
+                total=Sum(RawSQL("CASE WHEN CAST(data->'"+power_name+"'->>'value' AS DOUBLE PRECISION) < 0 THEN ABS(CAST(data->'"+power_name+"'->>'value' AS DOUBLE PRECISION)) ELSE 0 END", []))
+            )['total'] or 0.0
+            
+            daily_consumed = daily_records.aggregate(
+                total=Sum(RawSQL("CASE WHEN CAST(data->'"+power_name+"'->>'value' AS DOUBLE PRECISION) >= 0 THEN CAST(data->'"+power_name+"'->>'value' AS DOUBLE PRECISION) ELSE 0 END", []))
+            )['total'] or 0.0
 
-            weekly_energy = device_data.filter(timestamp__gte=one_week_ago).aggregate(
-                total_energy=Sum(
-                    RawSQL("CAST(data->'Energy'->>'value' AS DOUBLE PRECISION)", [])
-                )
-            )['total_energy'] or 0.0
+            # Calculate weekly produced/consumed energy
+            weekly_records = device_data.filter(timestamp__gte=one_week_ago)
+            weekly_produced = weekly_records.aggregate(
+                total=Sum(RawSQL("CASE WHEN CAST(data->'"+power_name+"'->>'value' AS DOUBLE PRECISION) < 0 THEN ABS(CAST(data->'"+power_name+"'->>'value' AS DOUBLE PRECISION)) ELSE 0 END", []))
+            )['total'] or 0.0
+            
+            weekly_consumed = weekly_records.aggregate(
+                total=Sum(RawSQL("CASE WHEN CAST(data->'"+power_name+"'->>'value' AS DOUBLE PRECISION) >= 0 THEN CAST(data->'"+power_name+"'->>'value' AS DOUBLE PRECISION) ELSE 0 END", []))
+            )['total'] or 0.0
 
-            monthly_energy = device_data.filter(timestamp__gte=one_month_ago).aggregate(
-                total_energy=Sum(
-                    RawSQL("CAST(data->'Energy'->>'value' AS DOUBLE PRECISION)", [])
-                )
-            )['total_energy'] or 0.0
+            # Calculate monthly produced/consumed energy
+            monthly_records = device_data.filter(timestamp__gte=one_month_ago)
+            monthly_produced = monthly_records.aggregate(
+                total=Sum(RawSQL("CASE WHEN CAST(data->'"+power_name+"'->>'value' AS DOUBLE PRECISION) < 0 THEN ABS(CAST(data->'"+power_name+"'->>'value' AS DOUBLE PRECISION)) ELSE 0 END", []))
+            )['total'] or 0.0
+            
+            monthly_consumed = monthly_records.aggregate(
+                total=Sum(RawSQL("CASE WHEN CAST(data->'"+power_name+"'->>'value' AS DOUBLE PRECISION) >= 0 THEN CAST(data->'"+power_name+"'->>'value' AS DOUBLE PRECISION) ELSE 0 END", []))
+            )['total'] or 0.0
+
+            # Apply time factor to get energy values (power × time)
+            time_factor = delta_time  # This is approximate - ideally would sum actual time intervals
 
             # Store all computed values in a structured dictionary
             conv_factor_to_kwh =3.6 * 10**6
             energy_data = {
-                'Energy': {'value': integral_value  / conv_factor_to_kwh, 'unit': 'kWh'},
-                'Energy_daily': {'value': daily_energy / conv_factor_to_kwh, 'unit': 'kWh'},
-                'Energy_weekly': {'value': weekly_energy / conv_factor_to_kwh, 'unit': 'kWh'},
-                'Energy_monthly': {'value': monthly_energy / conv_factor_to_kwh, 'unit': 'kWh'},
+                'Energy': {'value': integral_value / conv_factor_to_kwh, 'unit': 'kWh'},
+                'Energy_produced': {'value': energy_produced / conv_factor_to_kwh, 'unit': 'kWh'},
+                'Energy_consumed': {'value': energy_consumed / conv_factor_to_kwh, 'unit': 'kWh'},
+                
+                'Energy_daily_produced': {'value': daily_produced * time_factor / conv_factor_to_kwh, 'unit': 'kWh'},
+                'Energy_daily_consumed': {'value': daily_consumed * time_factor / conv_factor_to_kwh, 'unit': 'kWh'},
+                
+                'Energy_weekly_produced': {'value': weekly_produced * time_factor / conv_factor_to_kwh, 'unit': 'kWh'},
+                'Energy_weekly_consumed': {'value': weekly_consumed * time_factor / conv_factor_to_kwh, 'unit': 'kWh'},
+                
+                'Energy_monthly_produced': {'value': monthly_produced * time_factor / conv_factor_to_kwh, 'unit': 'kWh'},
+                'Energy_monthly_consumed': {'value': monthly_consumed * time_factor / conv_factor_to_kwh, 'unit': 'kWh'},
             }
+
 
             logger.info(f"Computed energy data: {energy_data}")
             return energy_data
@@ -210,10 +262,15 @@ def compute_energy(variables, device_data):
         else:
             # Initialize the integral value for the first entry
             energy_data = {
-                'Energy': {'value': 0.0, 'unit': 'J'},
-                'Energy_daily': {'value': 0.0, 'unit': 'J'},
-                'Energy_weekly': {'value': 0.0, 'unit': 'J'},
-                'Energy_monthly': {'value': 0.0, 'unit': 'J'},
+                'Energy': {'value': 0.0, 'unit': 'kWh'},
+                'Energy_produced': {'value': 0.0, 'unit': 'kWh'},
+                'Energy_consumed': {'value': 0.0, 'unit': 'kWh'},
+                'Energy_daily_produced': {'value': 0.0, 'unit': 'kWh'},
+                'Energy_daily_consumed': {'value': 0.0, 'unit': 'kWh'},
+                'Energy_weekly_produced': {'value': 0.0, 'unit': 'kWh'},
+                'Energy_weekly_consumed': {'value': 0.0, 'unit': 'kWh'},
+                'Energy_monthly_produced': {'value': 0.0, 'unit': 'kWh'},
+                'Energy_monthly_consumed': {'value': 0.0, 'unit': 'kWh'},
             }
             logger.info("No previous data or 'P' variable found, initializing energy values to 0")
             return energy_data
@@ -221,11 +278,16 @@ def compute_energy(variables, device_data):
     except Exception as e:
         logger.error(f"Error during computation: {e}", exc_info=True)
         energy_data = {
-            'Energy': {'value': 0.0, 'unit': 'J'},
-            'Energy_daily': {'value': 0.0, 'unit': 'J'},
-                'Energy_weekly': {'value': 0.0, 'unit': 'J'},
-            'Energy_monthly': {'value': 0.0, 'unit': 'J'},
-        }
+                'Energy': {'value': 0.0, 'unit': 'kWh'},
+                'Energy_produced': {'value': 0.0, 'unit': 'kWh'},
+                'Energy_consumed': {'value': 0.0, 'unit': 'kWh'},
+                'Energy_daily_produced': {'value': 0.0, 'unit': 'kWh'},
+                'Energy_daily_consumed': {'value': 0.0, 'unit': 'kWh'},
+                'Energy_weekly_produced': {'value': 0.0, 'unit': 'kWh'},
+                'Energy_weekly_consumed': {'value': 0.0, 'unit': 'kWh'},
+                'Energy_monthly_produced': {'value': 0.0, 'unit': 'kWh'},
+                'Energy_monthly_consumed': {'value': 0.0, 'unit': 'kWh'},
+            }
         return energy_data
         
 

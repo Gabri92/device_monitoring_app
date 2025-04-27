@@ -29,9 +29,9 @@ CORE TESTS TO DO:
 	
 COMMANDS:
 
-1. docker-compose exec web manage.py test user_devices.tests.test_core_funcs
+1. docker-compose exec web python manage.py test user_devices.tests.test_core_funcs -v 3
 
-2. docker-compose exec web coverage run --source=user_devices.functions manage.py test user_devices.tests.test_core_funcs
+2. docker-compose exec web coverage run --source=user_devices.functions python manage.py test user_devices.tests.test_core_funcs
 
 3. docker-compose exec web coverage report -m
 
