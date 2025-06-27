@@ -6,3 +6,5 @@ docs/images/*
 .coverage
 htmlconv
 htmlconv/*
+guide.txt
+domande.txt

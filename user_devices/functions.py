@@ -67,12 +67,23 @@ def map_variables(base_values, device):
             logger.info(f"Mapping: {mapping.var_name}, Start: {mapping.address}")
             logger.info(f"Base values length: {len(base_values)}")
 
-            raw_value = base_values[address]
+            # Calcolo quanti registri servono per il bit_length richiesto
+            num_registers = mapping.bit_length // 16
+            registers = []
+            for i in range(num_registers):
+                reg_addr = address + i * 2  # ogni registro Modbus è 2 byte
+                if reg_addr in base_values:
+                    registers.append(base_values[reg_addr])
+                else:
+                    raise Exception(f"Missing register at address {hex(reg_addr)} for variable {mapping.var_name}")
 
-            # Apply conversion factor
-            # Parse conversion factor with support for fractional and decimal inputs
+            # Combino i registri in un unico valore
+            # I registri Modbus sono big-endian per default
+            raw_bytes = b''.join(reg.to_bytes(2, byteorder='big') for reg in registers)
+            raw_value = int.from_bytes(raw_bytes, byteorder='big', signed=mapping.is_signed)
+
+            # Applico il conversion factor
             try:
-                # Attempt to parse as float first
                 logger.info(f"Conv factor from mapping: {mapping.conversion_factor}")
                 if mapping.conversion_factor.__contains__("/"):
                     conversion_factor = float(Fraction(mapping.conversion_factor))
@@ -80,7 +91,7 @@ def map_variables(base_values, device):
                     conversion_factor = float(mapping.conversion_factor)
             except (ValueError, TypeError, ZeroDivisionError):
                 logger.warning(f"Invalid conversion factor for {mapping.var_name}: {mapping.conversion_factor}. Defaulting to 0.")
-                conversion_factor = 0.0  # Default to 1 in case of failure
+                conversion_factor = 0.0
             logger.info(f"Conversion factor: {conversion_factor}")
             converted_value = raw_value * conversion_factor
             sanitized_name = sanitize_variable_name(mapping.var_name)
@@ -97,7 +108,6 @@ def map_variables(base_values, device):
             }
             logger.info(f"Error while mapping the values: {e}")
             continue
-            # Convert to JSON
     json_result = json.dumps(mapped_values, indent=4)
     logger.info(f"Mapped JSON: {json_result}")
     return mapped_values

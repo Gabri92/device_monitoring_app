@@ -64,6 +64,15 @@ class MappingVariable(DeviceVariable):
     address = models.CharField(default="",help_text="Address of the mapped value")
     unit = models.CharField(max_length=20, help_text="Measurement unit (e.g., V, A, Hz)")
     conversion_factor = models.CharField(default="1", help_text="Factor to convert raw data to physical value")
+    bit_length = models.PositiveIntegerField(
+        choices=[(16, '16 bit'), (32, '32 bit'), (64, '64 bit')],
+        default=16,
+        help_text="Bit length of the register (16, 32, 64)"
+    )
+    is_signed = models.BooleanField(
+        default=False,
+        help_text="Interpret value as signed (True) or unsigned (False)"
+    )
 
     def __str__(self):
         return f"{self.var_name}"

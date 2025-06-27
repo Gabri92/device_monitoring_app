@@ -30,7 +30,7 @@ class GatewayAdmin(admin.ModelAdmin):
 class MemoryMappingInline(SortableStackedInline, admin.StackedInline):
     model = MappingVariable
     extra = 0
-    fields = ('var_name', 'address', 'unit', 'conversion_factor','show_on_graph') 
+    fields = ('var_name', 'address', 'unit', 'conversion_factor', 'bit_length', 'is_signed', 'show_on_graph') 
     sortable = 'order'
 
 class ComputedVariableInline(SortableStackedInline, admin.StackedInline):
