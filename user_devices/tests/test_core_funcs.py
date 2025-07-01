@@ -1,5 +1,5 @@
 # user_devices/tests/test_functions.py
-import pytest
+import pdb
 from unittest.mock import Mock, patch, MagicMock
 from datetime import datetime, timezone, timedelta
 from decimal import Decimal
@@ -130,12 +130,14 @@ class TestMapVariables(TestCase):
         voltage_mapping.address = "0x0280"
         voltage_mapping.conversion_factor = "0.1"
         voltage_mapping.unit = "V"
+        voltage_mapping.bit_length = 16
         
         current_mapping = Mock()
         current_mapping.var_name = "Current"
         current_mapping.address = "0x0282"
         current_mapping.conversion_factor = "0.01"
         current_mapping.unit = "A"
+        current_mapping.bit_length = 16
         
         # Configure the mock filter to return our mock mappings
         mock_filter.return_value = [voltage_mapping, current_mapping]
@@ -164,6 +166,7 @@ class TestMapVariables(TestCase):
         power_mapping.address = "0x0284"
         power_mapping.conversion_factor = "1/10"
         power_mapping.unit = "kW"
+        power_mapping.bit_length = 16
         
         mock_filter.return_value = [power_mapping]
         
@@ -207,6 +210,122 @@ class TestMapVariables(TestCase):
         # For missing address, should default to 0
         self.assertEqual(result["Missing"]["value"], 0)
         self.assertEqual(result["Missing"]["unit"], "Y")
+
+    @patch('user_devices.functions.logger')
+    @patch('user_devices.functions.MappingVariable.objects.filter')
+    def test_map_variables_16bit_unsigned(self, mock_filter, mock_logger):
+        device = Mock()
+        device.name = "Test Device"
+        base_values = {0x0280: 0x1234}
+        mapping = Mock()
+        mapping.var_name = "Var16U"
+        mapping.address = "0x0280"
+        mapping.conversion_factor = "1"
+        mapping.unit = "U"
+        mapping.bit_length = 16
+        mapping.is_signed = False
+        mock_filter.return_value = [mapping]
+        result = map_variables(base_values, device)
+        self.assertEqual(result["Var16U"]["value"], 0x1234)
+        self.assertEqual(result["Var16U"]["unit"], "U")
+
+    @patch('user_devices.functions.logger')
+    @patch('user_devices.functions.MappingVariable.objects.filter')
+    def test_map_variables_16bit_signed(self, mock_filter, mock_logger):
+        device = Mock()
+        device.name = "Test Device"
+        base_values = {0x0280: 0xFFFF}  # -1 in signed 16-bit
+        mapping = Mock()
+        mapping.var_name = "Var16S"
+        mapping.address = "0x0280"
+        mapping.conversion_factor = "1"
+        mapping.unit = "S"
+        mapping.bit_length = 16
+        mapping.is_signed = True
+        mock_filter.return_value = [mapping]
+        result = map_variables(base_values, device)
+        self.assertEqual(result["Var16S"]["value"], -1)
+        self.assertEqual(result["Var16S"]["unit"], "S")
+
+    @patch('user_devices.functions.logger')
+    @patch('user_devices.functions.MappingVariable.objects.filter')
+    def test_map_variables_32bit_unsigned(self, mock_filter, mock_logger):
+        device = Mock()
+        device.name = "Test Device"
+        # 0x12345678 split into two 16-bit registers: 0x1234, 0x5678
+        base_values = {0x0280: 0x1234, 0x0282: 0x5678}
+        mapping = Mock()
+        mapping.var_name = "Var32U"
+        mapping.address = "0x0280"
+        mapping.conversion_factor = "1"
+        mapping.unit = "U"
+        mapping.bit_length = 32
+        mapping.is_signed = False
+        mock_filter.return_value = [mapping]
+        result = map_variables(base_values, device)
+        expected = (0x1234 << 16) | 0x5678
+        self.assertAlmostEqual(result["Var32U"]["value"], float(expected))
+        self.assertEqual(result["Var32U"]["unit"], "U")
+
+    @patch('user_devices.functions.logger')
+    @patch('user_devices.functions.MappingVariable.objects.filter')
+    def test_map_variables_32bit_signed(self, mock_filter, mock_logger):
+        device = Mock()
+        device.name = "Test Device"
+        # 0xFFFF8000 is -32768 in signed 32-bit
+        base_values = {0x0280: 0xFFFF, 0x0282: 0x8000}
+        mapping = Mock()
+        mapping.var_name = "Var32S"
+        mapping.address = "0x0280"
+        mapping.conversion_factor = "1"
+        mapping.unit = "S"
+        mapping.bit_length = 32
+        mapping.is_signed = True
+        mock_filter.return_value = [mapping]
+        result = map_variables(base_values, device)
+        expected = int.from_bytes(b'\xff\xff\x80\x00', byteorder='big', signed=True)
+        self.assertAlmostEqual(result["Var32S"]["value"], float(expected))
+        self.assertEqual(result["Var32S"]["unit"], "S")
+
+    @patch('user_devices.functions.logger')
+    @patch('user_devices.functions.MappingVariable.objects.filter')
+    def test_map_variables_64bit_unsigned(self, mock_filter, mock_logger):
+        device = Mock()
+        device.name = "Test Device"
+        # 0x0123456789ABCDEF split into four 16-bit registers
+        base_values = {0x0280: 0x0123, 0x0282: 0x4567, 0x0284: 0x89AB, 0x0286: 0xCDEF}
+        mapping = Mock()
+        mapping.var_name = "Var64U"
+        mapping.address = "0x0280"
+        mapping.conversion_factor = "1"
+        mapping.unit = "U"
+        mapping.bit_length = 64
+        mapping.is_signed = False
+        mock_filter.return_value = [mapping]
+        result = map_variables(base_values, device)
+        expected = (0x0123 << 48) | (0x4567 << 32) | (0x89AB << 16) | 0xCDEF
+        self.assertAlmostEqual(result["Var64U"]["value"], float(expected))
+        self.assertEqual(result["Var64U"]["unit"], "U")
+
+    @patch('user_devices.functions.logger')
+    @patch('user_devices.functions.MappingVariable.objects.filter')
+    def test_map_variables_64bit_signed(self, mock_filter, mock_logger):
+        device = Mock()
+        device.name = "Test Device"
+        # 0xFFFFFFFF80000000 is -2147483648 in signed 64-bit
+        base_values = {0x0280: 0xFFFF, 0x0282: 0xFFFF, 0x0284: 0x8000, 0x0286: 0x0000}
+        mapping = Mock()
+        mapping.var_name = "Var64S"
+        mapping.address = "0x0280"
+        mapping.conversion_factor = "1"
+        mapping.unit = "S"
+        mapping.bit_length = 64
+        mapping.is_signed = True
+        mock_filter.return_value = [mapping]
+        result = map_variables(base_values, device)
+        expected = int.from_bytes(b'\xff\xff\xff\xff\x80\x00\x00\x00', byteorder='big', signed=True)
+        self.assertAlmostEqual(result["Var64S"]["value"], float(expected))
+        self.assertEqual(result["Var64S"]["unit"], "S")
 
 class TestComputeVariables(TestCase):
     @patch('user_devices.functions.sympify')

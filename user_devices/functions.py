@@ -169,7 +169,7 @@ def compute_energy(variables, device_data):
         power_name = None
         is_power_configured = False
         for name in power_variable_names:
-            if name in previous_data.data and name in variables:
+            if previous_data and name in previous_data.data and name in variables:
                 power_name = name
                 is_power_configured = True
                 break

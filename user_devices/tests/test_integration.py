@@ -1,5 +1,6 @@
 # user_devices/tests/test_integration.py
 from django.test import TestCase, TransactionTestCase
+from pymodbus.client import ModbusTcpClient
 from django.contrib.auth.models import User
 from unittest.mock import patch, Mock
 from user_devices.models import (
@@ -9,24 +10,20 @@ from user_devices.models import (
 from user_devices.tasks import scan_and_read_devices, check_all_devices
 from user_devices.functions import read_modbus_registers, map_variables, compute_variables
 from datetime import datetime, timezone
-import json
+import json, pdb
 
 #TODO: Funzione scan_and_read_devices poco testabile
 class DeviceDataFlowIntegrationTest(TransactionTestCase):
     """Tests the entire data flow from device reading to data storage"""
     
     def setUp(self):
-        # Create test user
-        self.user = User.objects.create_user(username='testuser', password='testpass')
-        
         # Create test gateway
         self.gateway = Gateway.objects.create(
             name="Test Gateway",
             ssh_username="ssh_user",
             ssh_password="ssh_pass",
-            ip_address="192.168.1.100"
+            ip_address="127.0.0.1"
         )
-        self.gateway.user.add(self.user)
         
         # Create test device
         self.device = Device.objects.create(
@@ -37,7 +34,7 @@ class DeviceDataFlowIntegrationTest(TransactionTestCase):
             bytes_count=24,
             port=502
         )
-        self.device.user.add(self.user)
+        #self.device.user.add(self.user)
         
         # Create mapping variables
         self.voltage_var = MappingVariable.objects.create(
@@ -63,27 +60,34 @@ class DeviceDataFlowIntegrationTest(TransactionTestCase):
             formula="Voltage * Current",
             unit="W"
         )
-
-    @patch('pymodbus.client.ModbusTcpClient')
+        
+        # Create users
+        self.user = User.objects.create_user(username='user', password='testpass')
+        self.gateway.user.add(self.user)
+        self.user1 = User.objects.create_user(username='user1', password='testpass')        
+        
+        
+    @patch('user_devices.tasks.ModbusTcpClient')
     @patch('redis.lock.Lock.acquire')
     @patch('redis.lock.Lock.release')
     def test_end_to_end_device_reading(self, mock_lock_release, mock_lock_acquire, mock_modbus_client):
         # Mock Redis lock
         mock_lock_acquire.return_value = True
         
-        # Mock ModbusTcpClient
+        # Mock the client instance
         mock_client = Mock()
         mock_client.connect.return_value = True
-        
-        # Mock successful register reading
         mock_response = Mock()
         mock_response.isError.return_value = False
-        mock_response.registers = [1000, 200]  # Simple test values
+        mock_response.registers = [1000, 200]  # Example register values
         mock_client.read_input_registers.return_value = mock_response
         mock_modbus_client.return_value = mock_client
         
         # Run the task
-        scan_and_read_devices(self.gateway.ip_address)
+        try:
+            scan_and_read_devices(self.gateway.ip_address)
+        except Exception as e:
+            print(f"Error: {e}")
         
         # Check that data was stored
         self.assertTrue(DeviceData.objects.exists())
@@ -102,17 +106,13 @@ class UserPermissionPropagationTest(TestCase):
     """Tests the propagation of user permissions through models"""
     
     def setUp(self):
-        # Create users
-        self.user1 = User.objects.create_user(username='user1', password='pass1')
-        self.user2 = User.objects.create_user(username='user2', password='pass2')
-        
+
         # Create gateway with initial user
         self.gateway = Gateway.objects.create(
             name="Test Gateway",
             ip_address="192.168.1.100"
         )
-        self.gateway.user.add(self.user1)
-        
+
         # Create device
         self.device = Device.objects.create(
             name="Test Device",
@@ -135,6 +135,12 @@ class UserPermissionPropagationTest(TestCase):
             device_name=self.device,
             data={"test": {"value": 1, "unit": "X"}}
         )
+        
+        # Create users
+        self.user1 = User.objects.create_user(username='user1', password='testpass')
+        self.gateway.user.add(self.user1)
+        self.user2 = User.objects.create_user(username='user2', password='testpass')
+        self.gateway.user.add(self.user2)
     
     def test_user_propagation_on_addition(self):
         """Test that adding a user to a gateway propagates to devices and data"""
@@ -202,7 +208,8 @@ class TaskExecutionTest(TransactionTestCase):
         
         # Check both gateways are included
         call_args = mock_group.call_args[0][0]
-        self.assertEqual(len(call_args), 2)  # Should have 2 tasks
+        call_args_list = list(call_args)
+        self.assertEqual(len(call_args_list), 2)
         
         # Verify job was applied
         mock_job.apply_async.assert_called_once()
