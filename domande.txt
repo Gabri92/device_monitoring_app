@@ -1,0 +1,1 @@
+- E' possibile fare dei test di comunicazione hw anche con un dispositivo modbus?

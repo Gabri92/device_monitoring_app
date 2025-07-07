@@ -1,0 +1,10 @@
+To run the app in docker in window systems:
+
+- Open Docker Desktop
+- docker-compose up --build
+
+
+Basic django commands:
+
+- docker-compose exec <webapp-container-name> python manage.py migrate -> Crea il database
+- docker-compose exec <webapp-container-name> python manage.py createsuperuser -> Crea profilo amministratore
