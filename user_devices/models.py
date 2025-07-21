@@ -17,6 +17,7 @@ class Device(models.Model):
     user = models.ManyToManyField(User, related_name='user_device')
     Gateway = models.ForeignKey(Gateway, null=True, on_delete=models.CASCADE, related_name='devices')
     name = models.CharField(max_length=100, unique=True)
+    is_enabled = models.BooleanField(default=False, help_text="Enable/Disable monitoring for this device")
     slave_id = models.IntegerField(default=-1, help_text="Slave ID of the device(nr between 1 to 247)")
     start_address = models.CharField(help_text="Starting Modbus address in hexadecimal (e.g., 0x0280)")
     bytes_count = models.PositiveIntegerField(default=1, help_text="Total number of consecutive bytes to read")
@@ -25,6 +26,12 @@ class Device(models.Model):
     show_energy_daily = models.BooleanField(default=False, help_text="Show daily energy production/consumption")
     show_energy_weekly = models.BooleanField(default=False, help_text="Show weekly energy production/consumption")
     show_energy_monthly = models.BooleanField(default=False, help_text="Show monthly energy production/consumption")
+    register_type = models.CharField(
+        max_length=10,
+        choices=[('input', 'Input Register'), ('holding', 'Holding Register')],
+        default='input',
+        help_text='Type of Modbus register to read (Input or Holding)',
+    )
     
     class Meta:
         ordering = ['id']  

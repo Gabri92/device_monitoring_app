@@ -40,8 +40,8 @@ class ComputedVariableInline(SortableStackedInline, admin.StackedInline):
     sortable = 'order'
 
 class DeviceAdmin(SortableAdminBase, admin.ModelAdmin):
-    list_display = ('name','get_users','Gateway__name', 'Gateway__ip_address', 'slave_id','start_address','bytes_count')
-    list_filter = ('user','Gateway')
+    list_display = ('name','is_enabled', 'get_users','Gateway__name', 'Gateway__ip_address', 'slave_id','start_address','bytes_count')
+    list_filter = ('user','Gateway', 'is_enabled')
     search_fields = ('user','Gateway')
     inlines = [MemoryMappingInline, ComputedVariableInline]
     actions = ['reset_axis_assignments']
@@ -49,7 +49,7 @@ class DeviceAdmin(SortableAdminBase, admin.ModelAdmin):
     exclude = ('user',)  # Hide the actual editable ManyToMany field
     fieldsets = (
         (None, {
-            'fields': ('name', 'Gateway', 'slave_id', 'start_address', 'bytes_count', 'port')
+            'fields': ( 'is_enabled', 'name', 'Gateway', 'slave_id','register_type', 'start_address', 'bytes_count', 'port')
         }),
         ('Energy Display Options', {
             'fields': ('show_energy','show_energy_daily', 'show_energy_weekly', 'show_energy_monthly'),
