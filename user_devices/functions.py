@@ -36,7 +36,10 @@ def read_modbus_registers(device, client):
             current_address = start_address + offset
             logger.info(f"Start Address: {current_address}")
             words_to_read = min(MAX_WORDS_PER_READ, (bytes_count - offset) // 2)
-            response = client.read_input_registers(address=current_address, count=words_to_read,slave=device.slave_id)
+            if hasattr(device, 'register_type') and device.register_type == 'holding':
+                response = client.read_holding_registers(address=current_address, count=words_to_read, slave=device.slave_id)
+            else:
+                response = client.read_input_registers(address=current_address, count=words_to_read, slave=device.slave_id)
             if response.isError():
                 logger.info(f"Error reading address {current_address} for device {device.name}")
                 continue
