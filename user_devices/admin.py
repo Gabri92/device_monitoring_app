@@ -40,7 +40,7 @@ class ComputedVariableInline(SortableStackedInline, admin.StackedInline):
     sortable = 'order'
 
 class DeviceAdmin(SortableAdminBase, admin.ModelAdmin):
-    list_display = ('name','is_enabled', 'get_users','Gateway__name', 'Gateway__ip_address', 'slave_id','start_address','bytes_count')
+    list_display = ('name','is_enabled', 'get_users','Gateway__name', 'Gateway__ip_address', 'protocol')
     list_filter = ('user','Gateway', 'is_enabled')
     search_fields = ('user','Gateway')
     inlines = [MemoryMappingInline, ComputedVariableInline]
@@ -49,13 +49,16 @@ class DeviceAdmin(SortableAdminBase, admin.ModelAdmin):
     exclude = ('user',)  # Hide the actual editable ManyToMany field
     fieldsets = (
         (None, {
-            'fields': ( 'is_enabled', 'name', 'Gateway', 'slave_id','register_type', 'start_address', 'bytes_count', 'port')
+            'fields': ( 'is_enabled', 'name', 'Gateway', 'protocol', 'slave_id','register_type', 'start_address', 'bytes_count', 'port')
         }),
         ('Energy Display Options', {
             'fields': ('show_energy','show_energy_daily', 'show_energy_weekly', 'show_energy_monthly'),
         }),
     )
-
+    
+    class Media:
+        js = ('admin/js/device_admin.js',)
+        
     def get_users(self, obj):
         return ", ".join([user.username for user in obj.user.all()])
     get_users.short_description = 'Users'
@@ -87,6 +90,23 @@ class DeviceAdmin(SortableAdminBase, admin.ModelAdmin):
     def reset_axis_assignments(self, request, queryset):
         queryset.update(is_x_axis=False, is_y_axis=False)
         self.message_user(request, "Axis assignments reset.")
+      
+    def get_form(self, request, obj=None, **kwargs):
+        form = super().get_form(request, obj, **kwargs)
+
+        protocol = None
+
+        if obj:  # Se stai modificando un oggetto esistente
+            protocol = obj.protocol
+        elif request.method == 'POST':  # Se stai creando e hai già inviato il form
+            protocol = request.POST.get('protocol')
+
+        if protocol == 'dlms':
+            for field in ['slave_id', 'register_type', 'start_address', 'bytes_count', 'port']:
+                if field in form.base_fields:
+                    form.base_fields[field].required = False
+
+        return form
 
 class DeviceDataAdmin(admin.ModelAdmin):
     list_display = ('device_name', 'timestamp','get_users', 'Gateway__ip_address')

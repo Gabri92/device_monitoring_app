@@ -19,7 +19,7 @@ class Device(models.Model):
     name = models.CharField(max_length=100, unique=True)
     is_enabled = models.BooleanField(default=False, help_text="Enable/Disable monitoring for this device")
     slave_id = models.IntegerField(default=-1, help_text="Slave ID of the device(nr between 1 to 247)")
-    start_address = models.CharField(help_text="Starting Modbus address in hexadecimal (e.g., 0x0280)")
+    start_address = models.CharField(default = 0, help_text="Starting Modbus address in hexadecimal (e.g., 0x0280)")
     bytes_count = models.PositiveIntegerField(default=1, help_text="Total number of consecutive bytes to read")
     port = models.IntegerField(default=502)
     show_energy = models.BooleanField(default=False, help_text="Show real time energy production/consumption")
@@ -32,13 +32,19 @@ class Device(models.Model):
         default='input',
         help_text='Type of Modbus register to read (Input or Holding)',
     )
+    protocol = models.CharField(
+        max_length=10,
+        choices=[('modbus', 'MODBUS'), ('dlms', 'DLMS')],
+        default='modbus',
+        help_text='Type of protocol for the readings'
+    )
     
     class Meta:
         ordering = ['id']  
     def __str__(self):
         return f"{self.name}"
 
-class DeviceVariable(models.Model):
+class DeviceVariable(models.Model):   
     VARIABLE_TYPE_CHOICES = [
         ('memory', 'Memory Mapping'),
         ('computed', 'Computed Variable'),
