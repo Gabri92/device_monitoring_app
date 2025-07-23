@@ -3,7 +3,7 @@ from django.contrib import messages
 from django.contrib.auth import authenticate, login, logout
 from django.shortcuts import render
 from django.shortcuts import render, get_object_or_404
-from .models import Device, Button, Gateway, ComputedVariable, MappingVariable, DeviceData
+from .models import Device, Button, Gateway, ComputedVariable, ModbusMappingVariable, DeviceData
 from django.shortcuts import redirect
 from .commands import set_pin_status
 from user_devices.functions import sanitize_variable_name  # or wherever it is
@@ -81,7 +81,7 @@ def device_detail_view(request,device_name):
 
     # Retrieve historic data for chart
     y_variable = ComputedVariable.objects.filter(device=device, show_on_graph=True).first() or \
-    MappingVariable.objects.filter(device=device, show_on_graph=True).first()
+    ModbusMappingVariable.objects.filter(device=device, show_on_graph=True).first()
 
     if y_variable:
         

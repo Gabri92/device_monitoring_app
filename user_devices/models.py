@@ -18,10 +18,10 @@ class Device(models.Model):
     Gateway = models.ForeignKey(Gateway, null=True, on_delete=models.CASCADE, related_name='devices')
     name = models.CharField(max_length=100, unique=True)
     is_enabled = models.BooleanField(default=False, help_text="Enable/Disable monitoring for this device")
-    slave_id = models.IntegerField(default=-1, help_text="Slave ID of the device(nr between 1 to 247)")
-    start_address = models.CharField(default = 0, help_text="Starting Modbus address in hexadecimal (e.g., 0x0280)")
-    bytes_count = models.PositiveIntegerField(default=1, help_text="Total number of consecutive bytes to read")
-    port = models.IntegerField(default=502)
+    slave_id = models.IntegerField(default=-1, help_text="Slave ID of the device(nr between 1 to 247)", null=True, blank=True)
+    start_address = models.CharField(default = 0, help_text="Starting Modbus address in hexadecimal (e.g., 0x0280)", null=True, blank=True)
+    bytes_count = models.PositiveIntegerField(default=1, help_text="Total number of consecutive bytes to read", null=True, blank=True)
+    port = models.IntegerField(default=502, null=True, blank=True)
     show_energy = models.BooleanField(default=False, help_text="Show real time energy production/consumption")
     show_energy_daily = models.BooleanField(default=False, help_text="Show daily energy production/consumption")
     show_energy_weekly = models.BooleanField(default=False, help_text="Show weekly energy production/consumption")
@@ -31,6 +31,8 @@ class Device(models.Model):
         choices=[('input', 'Input Register'), ('holding', 'Holding Register')],
         default='input',
         help_text='Type of Modbus register to read (Input or Holding)',
+        null=True,
+        blank=True
     )
     protocol = models.CharField(
         max_length=10,
@@ -55,8 +57,9 @@ class DeviceVariable(models.Model):
         default='memory',
         help_text="Choose the type of variable to configure (Memory Mapping or Computed Variable)"
     )
-    var_name = models.CharField(max_length=100, help_text="Name of the variable (e.g., Voltage, Power)")
-    unit = models.CharField(max_length=20, help_text="Measurement unit (e.g., V, A, W)")
+    var_name = models.CharField(max_length=100, help_text="Name of the variable (e.g., Voltage, Power)", null=True, blank=True)
+    unit = models.CharField(max_length=20, help_text="Measurement unit (e.g., V, A, W)", null=True, blank=True)
+    conversion_factor = models.CharField(default="1", help_text="Factor to convert raw data to physical value", null=True, blank=True)
     show_on_graph = models.BooleanField(default=False, help_text="Show this variable on the graph")
     order = models.PositiveIntegerField(default=0)  # 🆕 for sorting
 
@@ -68,15 +71,15 @@ class DeviceVariable(models.Model):
         # If this variable is selected as X-axis, deselect others as X-axis
         if self.show_on_graph:
             ComputedVariable.objects.filter(show_on_graph=True).exclude(pk=self.pk).update(show_on_graph=False)
-            MappingVariable.objects.filter(show_on_graph=True).exclude(pk=self.pk).update(show_on_graph=False)
-
+            ModbusMappingVariable.objects.filter(show_on_graph=True).exclude(pk=self.pk).update(show_on_graph=False)
+            DlmsMappingVariable.objects.filter(show_on_graph=True).exclude(pk=self.pk).update(show_on_graph=False)
+            
         super().save(*args, **kwargs)
 
-class MappingVariable(DeviceVariable):
-    device = models.ForeignKey(Device, on_delete=models.CASCADE, related_name="mapped_variables")
-    address = models.CharField(default="",help_text="Address of the mapped value")
-    unit = models.CharField(max_length=20, help_text="Measurement unit (e.g., V, A, Hz)")
-    conversion_factor = models.CharField(default="1", help_text="Factor to convert raw data to physical value")
+class ModbusMappingVariable(DeviceVariable):
+    device = models.ForeignKey(Device, on_delete=models.CASCADE, related_name="modbus_variables", null=True, blank=True)
+    address = models.CharField(default="",help_text="Address of the mapped value", null=True, blank=True)
+    unit = models.CharField(max_length=20, help_text="Measurement unit (e.g., V, A, Hz)", null=True, blank=True)
     bit_length = models.PositiveIntegerField(
         choices=[(16, '16 bit'), (32, '32 bit'), (64, '64 bit')],
         default=16,
@@ -86,6 +89,13 @@ class MappingVariable(DeviceVariable):
         default=False,
         help_text="Interpret value as signed (True) or unsigned (False)"
     )
+
+    def __str__(self):
+        return f"{self.var_name}"
+
+class DlmsMappingVariable(DeviceVariable):
+    device = models.ForeignKey(Device, on_delete=models.CASCADE, related_name="dlms_variables", null=True, blank=True)
+    obis_code = models.CharField(default="",help_text="Address of the mapped value", null=True, blank=True)
 
     def __str__(self):
         return f"{self.var_name}"

@@ -1,9 +1,10 @@
 from django.contrib import admin
-from .models import User, Gateway, Device, DeviceVariable, MappingVariable, ComputedVariable, Button, DeviceData
+from .models import User, Gateway, Device, DeviceVariable, ModbusMappingVariable, DlmsMappingVariable, ComputedVariable, Button, DeviceData
 from .commands import set_pin_status
 from django.utils.html import format_html
 from django.urls import reverse
 from adminsortable2.admin import  SortableAdminBase, SortableStackedInline
+from .forms import DeviceForm
 
 class GatewayAdmin(admin.ModelAdmin):
     list_display = ('ip_address', 'get_users')
@@ -27,23 +28,34 @@ class GatewayAdmin(admin.ModelAdmin):
                 for data in device.device_data.all():
                     data.user.add(user)
 
-class MemoryMappingInline(SortableStackedInline, admin.StackedInline):
-    model = MappingVariable
+class MemoryMappingInlineModbus(SortableStackedInline, admin.StackedInline):
+    model = ModbusMappingVariable
     extra = 0
     fields = ('var_name', 'address', 'unit', 'conversion_factor', 'bit_length', 'is_signed', 'show_on_graph') 
     sortable = 'order'
+    classes = ['modbus-inline']
+    
 
+class MemoryMappingInlineDlms(SortableStackedInline, admin.StackedInline):
+    model = DlmsMappingVariable
+    extra = 0
+    fields = ('var_name', 'obis_code', 'unit', 'conversion_factor', 'show_on_graph') 
+    sortable = 'order'
+    classes = ['dlms-inline']
+    
+    
 class ComputedVariableInline(SortableStackedInline, admin.StackedInline):
     model = ComputedVariable
     extra = 0
     fields = ('var_name', 'unit', 'formula','show_on_graph')
     sortable = 'order'
-
+    
 class DeviceAdmin(SortableAdminBase, admin.ModelAdmin):
+    form = DeviceForm
     list_display = ('name','is_enabled', 'get_users','Gateway__name', 'Gateway__ip_address', 'protocol')
     list_filter = ('user','Gateway', 'is_enabled')
     search_fields = ('user','Gateway')
-    inlines = [MemoryMappingInline, ComputedVariableInline]
+    #inlines = [MemoryMappingInlineModbus, ComputedVariableInline]
     actions = ['reset_axis_assignments']
     readonly_fields = ('get_users',)
     exclude = ('user',)  # Hide the actual editable ManyToMany field
@@ -58,55 +70,23 @@ class DeviceAdmin(SortableAdminBase, admin.ModelAdmin):
     
     class Media:
         js = ('admin/js/device_admin.js',)
-        
+    
     def get_users(self, obj):
         return ", ".join([user.username for user in obj.user.all()])
     get_users.short_description = 'Users'
     
-    def save_model(self, request, obj, form, change):
-        super().save_model(request, obj, form, change)
-        # Assicurati che tutti gli utenti del device siano anche nel gateway
-        if obj.Gateway:
-            for user in obj.user.all():
-                obj.Gateway.user.add(user)
-         # Sync users to all related DeviceData entries
-        for data in obj.device_data.all():
-            for user in obj.user.all():
-                data.user.add(user)
+    def get_inline_instances(self, request, obj=None):
+        return [
+            MemoryMappingInlineModbus(self.model, self.admin_site),
+            MemoryMappingInlineDlms(self.model, self.admin_site),
+            ComputedVariableInline(self.model, self.admin_site),
+        ]
 
-    def get_inlines(self, request, obj=None):
-        """
-        Dynamically show the correct inline based on the variable_type selected
-        """
-        if obj:
-            if hasattr(obj, 'variables'):
-                variable_type = obj.variables.all()[0].variable_type if obj.variables.exists() else None
-                if variable_type == "memory":
-                    return [MemoryMappingInline]
-                elif variable_type == "computed":
-                    return [ComputedVariableInline]
-        return super().get_inlines(request, obj)
 
     def reset_axis_assignments(self, request, queryset):
         queryset.update(is_x_axis=False, is_y_axis=False)
         self.message_user(request, "Axis assignments reset.")
-      
-    def get_form(self, request, obj=None, **kwargs):
-        form = super().get_form(request, obj, **kwargs)
 
-        protocol = None
-
-        if obj:  # Se stai modificando un oggetto esistente
-            protocol = obj.protocol
-        elif request.method == 'POST':  # Se stai creando e hai già inviato il form
-            protocol = request.POST.get('protocol')
-
-        if protocol == 'dlms':
-            for field in ['slave_id', 'register_type', 'start_address', 'bytes_count', 'port']:
-                if field in form.base_fields:
-                    form.base_fields[field].required = False
-
-        return form
 
 class DeviceDataAdmin(admin.ModelAdmin):
     list_display = ('device_name', 'timestamp','get_users', 'Gateway__ip_address')

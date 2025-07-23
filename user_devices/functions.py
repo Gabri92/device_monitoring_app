@@ -4,7 +4,7 @@ import json
 from sympy import sympify
 from datetime import datetime, timezone, timedelta
 from pymodbus.client import ModbusTcpClient
-from .models import MappingVariable, ComputedVariable, DeviceData
+from .models import ModbusMappingVariable, ComputedVariable, DeviceData
 from decimal import Decimal
 from django.db.models import Sum
 from django.db.models.expressions import RawSQL
@@ -61,7 +61,7 @@ Converts values using the defined conversion factors.
 """
 def map_variables(base_values, device):
     mapped_values = {}
-    mappings = MappingVariable.objects.filter(device=device)
+    mappings = ModbusMappingVariable.objects.filter(device=device)
     logger.info(f"Mapping obtained from database")
 
     for mapping in mappings:
