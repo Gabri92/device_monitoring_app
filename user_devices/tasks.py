@@ -6,7 +6,7 @@ from .models import Device, Gateway, DeviceData
 from pymodbus.client import ModbusTcpClient
 from redis import Redis 
 from redis.lock import Lock
-from .functions import read_modbus_registers, map_variables, compute_variables, compute_energy, store_data_in_database
+from .functions import read_modbus_registers, map_variables, read_dlms_values, compute_variables, compute_energy, store_data_in_database
 
 logger = logging.getLogger(__name__)
 
@@ -17,7 +17,7 @@ redis_client = Redis(host='redis', port=6379)
     1. Scan devices connected to the gateway.
     2. Read Modbus registers for each device.
     3. Map the data to variables and compute derived values.
-    4. Save data variable in database in JSON format
+    4. Save data variable in database in JSON format.
 """
 @shared_task
 def scan_and_read_devices(gateway_ip):
@@ -37,22 +37,29 @@ def scan_and_read_devices(gateway_ip):
 
             for device in devices:
                 if device.is_enabled:
-                    client = ModbusTcpClient(gateway.ip_address, port=device.port)
-                    connection = client.connect()
-                    if not connection:
-                        logger.warning(f"Failed to connect to device on {gateway.ip_address}:{device.port}")
-                        client.close()
-                        continue
+                    logger.info(f"Protocol: {device.protocol}")
+                    if device.protocol == 'modbus':
+                        client = ModbusTcpClient(gateway.ip_address, port=device.port)
+                        connection = client.connect()
+                        if not connection:
+                            logger.warning(f"Failed to connect to device on {gateway.ip_address}:{device.port}")
+                            client.close()
+                            continue
 
                     logger.info(f"Connected to device {device.name} on {gateway.ip_address}:{device.port}")
                     try:
-                        # Step 1: Read raw Modbus registers
-                        base_values = read_modbus_registers(device, client)
-                        logger.info(f"Values read: {base_values}")
-
-                        # Step 2: Map raw values
-                        mapped_values = map_variables(base_values, device)
-                        logger.info(f"Values mapped: {mapped_values}")
+                        
+                        if device.protocol == 'modubs':
+                            # Step 1a: Read raw Modbus registers
+                            base_values = read_modbus_registers(device, client)
+                            logger.info(f"Values read: {base_values}")
+                            # Step 2a: Map raw values
+                            mapped_values = map_variables(base_values, device)
+                            logger.info(f"Values mapped: {mapped_values}")
+                        elif device.protocol == 'dlms':
+                            base_values = read_dlms_values(device)
+                        else:
+                            continue
 
                         # Step 3: Compute derived variables
                         computed_values = compute_variables(mapped_values, device)
@@ -74,7 +81,8 @@ def scan_and_read_devices(gateway_ip):
                     except Exception as e:
                         logger.error(f"Error while reading values for device {device.name}: {e}")
                     finally:
-                        client.close()
+                        if device.protocol == 'modbus':
+                            client.close()
         finally:
             lock.release()
 

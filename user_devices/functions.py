@@ -1,6 +1,7 @@
 import logging
 import time
 import json
+import requests
 from sympy import sympify
 from datetime import datetime, timezone, timedelta
 from pymodbus.client import ModbusTcpClient
@@ -18,6 +19,15 @@ TIMEOUT = 5                 # Timeout per la connessione
 # Helper to sanitize variable names
 def sanitize_variable_name(name):
     return name.replace("-", "_").replace(" ", "_")
+
+"""
+Reads DLMS registers for a given device.
+"""
+def read_dlms_values(device):
+    gateway_ip = device.Gateway.ip_address
+    response = requests.get(f"http://127.0.0.1:5000/dlms/profile?obis_code=12")
+    logger.info(response.json())
+    return
 
 """
 Reads Modbus registers for a given device.
