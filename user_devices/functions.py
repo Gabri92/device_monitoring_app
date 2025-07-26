@@ -24,10 +24,58 @@ def sanitize_variable_name(name):
 Reads DLMS registers for a given device.
 """
 def read_dlms_values(device):
+    mockup_reading = True
+
+    mapped_values = {}
     gateway_ip = device.Gateway.ip_address
-    response = requests.get(f"http://127.0.0.1:5000/dlms/profile?obis_code=12")
-    logger.info(response.json())
-    return
+    gateway_port = device.port
+    
+    dlms_mappings = device.dlms_variables.all()
+
+    ############################################################
+    # MODIFICA TEMPORANEA PER LEGGERE DATI DAL CLIENTE ATTUALE #
+    ############################################################
+    if not mockup_reading:
+        for mapping in dlms_mappings:
+            response = requests.get(f"http://{gateway_ip}:{gateway_port}/dlms/profile?obis_code={mapping.obis_code}")
+            if response.ok:
+                data = response.json()
+                logger.info(response.json())
+                # Store the value with the variable name as key
+                mapped_values[mapping.var_name] = data['values']  # Adjust based on actual response format
+                logger.info(f"Read DLMS value for {mapping.var_name} (OBIS: {mapping.obis_code}): {data}")
+            else:
+                logger.error(f"Failed to read OBIS code {mapping.obis_code} for {mapping.var_name}")
+                logger.info(response)
+    else:
+        try:        
+            # Get profile data second
+            profile_response = requests.get(f"http://{gateway_ip}:{gateway_port}/dlms/profile?obis_code=0.0.99.1.0.255&days={device.days}")
+            if not profile_response.ok:
+                logger.error(f"Failed to get profile data: {profile_response.status_code}")
+                return None
+                
+            profile_data = profile_response.json()
+            
+            # Combine the data
+            mapped_values = {
+                'profile': profile_data
+            }
+            
+            return mapped_values
+            
+        except requests.exceptions.RequestException as e:
+            logger.error(f"Network error while reading DLMS values: {e}")
+            return None
+        except json.JSONDecodeError as e:
+            logger.error(f"Error decoding JSON response: {e}")
+            return None
+        except Exception as e:
+            logger.error(f"Unexpected error in read_dlms_values: {e}")
+            return None
+
+
+     
 
 """
 Reads Modbus registers for a given device.
@@ -319,6 +367,22 @@ Save device data into the DeviceData model.
 """
 def store_data_in_database(device, data):
     try:
+        # Check if device uses DLMS protocol
+        if hasattr(device, 'protocol') and device.protocol == 'dlms':
+            # Delete the last entry for this device
+            last_entry = DeviceData.objects.filter(
+                device_name=device,
+                Gateway=device.Gateway
+            ).order_by('-timestamp').first()
+            
+            # Delete it if it exists
+            if last_entry:
+                try:
+                    last_entry.delete()
+                    logger.info(f"Deleted previous DLMS entry for device {device.name}")
+                except Exception as del_error:
+                    logger.error(f"Error deleting previous DLMS entry: {del_error}")
+        
         dev_data = DeviceData.objects.create(
             Gateway=device.Gateway,
             device_name=device,

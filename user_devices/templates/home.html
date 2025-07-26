@@ -28,7 +28,17 @@
             <h2> Gateways Connected </h2>
             {% for gateway in gateways %}
             <li>
-                Gateway connected with ip {{ gateway.ip_address }} at port {{gateway.port}}
+                Gateway connected with ip {{ gateway.ip_address }}
+                {% with enabled_devices=gateway.devices.all|dictsort:"port" %}
+                    {% if enabled_devices %}
+                        - connected devices: 
+                        {% for device in enabled_devices %}
+                            {% if device.is_enabled %}
+                                {{ device.name }} (port {{ device.port }}){% if not forloop.last %}, {% endif %}
+                            {% endif %}
+                        {% endfor %}
+                    {% endif %}
+                {% endwith %}
             </li>
             {% empty %}
             <p>No gateways found.</p>
@@ -39,11 +49,11 @@
             <h2> Your Devices </h2>
             <ul>
                 {% for device in devices %}
-                <li class="device-item">
-                    <a href="{% url 'device_detail' device.name %}">{{ device }}</a>
-                </li>
+                    <li class="device-item">
+                        <a href="{% url 'device_detail' device.name %}">{{ device.name }}</a>
+                    </li>
                 {% empty %}
-                <p>No devices found.</p>
+                <p>No enabled devices found.</p>
                 {% endfor %}
             </ul>
         </section>

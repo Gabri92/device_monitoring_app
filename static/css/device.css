@@ -179,3 +179,143 @@ button:hover {
 .chart-container{
     flex: 2;
 }
+
+/* DLMS */
+/* Table Styles */
+.table-container {
+    max-height: 400px;
+    overflow-y: scroll;
+    border: 1px solid #ddd;
+    border-radius: 4px;
+    margin-top: 10px;
+}
+
+.values-table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 14px;
+}
+
+.values-table th,
+.values-table td {
+    border: 1px solid #ddd;
+    padding: 8px;
+    text-align: right;
+    white-space: nowrap;
+}
+
+.values-table th {
+    background-color: #336791;
+    color: white;
+    position: sticky;
+    top: 0;
+    z-index: 1;
+    font-weight: bold;
+}
+
+.values-table tr:nth-child(even) {
+    background-color: #f9f9f9;
+}
+
+/* Custom Scrollbar */
+.table-container::-webkit-scrollbar {
+    width: 10px;
+}
+
+.table-container::-webkit-scrollbar-track {
+    background: #f1f1f1;
+    border-radius: 5px;
+}
+
+.table-container::-webkit-scrollbar-thumb {
+    background: #336791;
+    border-radius: 5px;
+}
+
+.table-container::-webkit-scrollbar-thumb:hover {
+    background: #264d6f;
+}
+
+/* Box Container Layout */
+.vertical-boxes {
+    display: flex;
+    flex-direction: column;
+    gap: 10px; /* small gap between clock and reading */
+    flex: 0 0 auto;
+}
+
+/* Reduce padding and remove extra height */
+.clock-box,
+.latest-reading-box {
+    padding: 10px;
+    min-height: auto;
+}
+
+/* Avoid text wrapping for the heading */
+.latest-reading-box h2 {
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    font-size: 1.2em;
+    margin-bottom: 10px;
+}
+.box-container {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 20px;
+    width: 100%;
+    padding: 20px;
+}
+
+/* Common Box Styling */
+.info-box {
+    flex: 1;  /* default flex value */
+    min-width: 300px;
+    background-color: white;
+    border-radius: 8px;
+    box-shadow: 0px 4px 8px rgba(0, 0, 0, 0.1);
+    padding: 20px;
+    margin-bottom: 20px;
+}
+
+/* Make clock and latest reading boxes smaller */
+.info-box.clock-box,
+.info-box.latest-reading-box {
+    padding: 10px;
+    min-height: unset;
+}
+
+/* Make table box larger */
+.info-box.table-box {
+    flex: 2;  /* grow twice as much as others */
+}
+
+
+/* Clock Display */
+.clock-value {
+    font-size: 1.8em;
+    font-weight: bold;
+    color: #336791;
+    text-align: center;
+    padding: 20px 0;
+}
+
+/* Latest Value Display */
+.latest-value {
+    font-size: 2.5em;
+    font-weight: bold;
+    color: #336791;
+    text-align: center;
+    padding: 20px 0;
+}
+
+/* Responsive adjustments */
+@media (max-width: 768px) {
+    .info-box {
+        min-width: 100%;
+    }
+    
+    .clock-value, .latest-value {
+        font-size: 1.5em;
+    }
+}

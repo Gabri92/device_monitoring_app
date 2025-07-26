@@ -11,9 +11,10 @@ document.addEventListener('DOMContentLoaded', function () {
             .form-row.field-slave_id,
             .form-row.field-register_type,
             .form-row.field-start_address,
-            .form-row.field-bytes_count,
-            .form-row.field-port
+            .form-row.field-bytes_count
         `);
+
+        const dlmsFields = document.querySelectorAll('.form-row.field-days');
 
         if (!protocolSelect) return;
 
@@ -22,8 +23,10 @@ document.addEventListener('DOMContentLoaded', function () {
 
         if (value === 'modbus') {
             modbusFields.forEach(el => el.style.display = '');
+            dlmsFields.forEach(el => el.style.display = 'none');
         } else if (value === 'dlms') {
             modbusFields.forEach(el => el.style.display = 'none');
+            dlmsFields.forEach(el => el.style.display = '');
         }
         console.log('Found fields:', modbusFields);
 

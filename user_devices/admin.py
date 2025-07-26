@@ -4,7 +4,7 @@ from .commands import set_pin_status
 from django.utils.html import format_html
 from django.urls import reverse
 from adminsortable2.admin import  SortableAdminBase, SortableStackedInline
-from .forms import DeviceForm
+from .forms import DeviceForm, DlmsMappingVariableForm
 
 class GatewayAdmin(admin.ModelAdmin):
     list_display = ('ip_address', 'get_users')
@@ -35,14 +35,19 @@ class MemoryMappingInlineModbus(SortableStackedInline, admin.StackedInline):
     sortable = 'order'
     classes = ['modbus-inline']
     
-
 class MemoryMappingInlineDlms(SortableStackedInline, admin.StackedInline):
     model = DlmsMappingVariable
+    form = DlmsMappingVariableForm
     extra = 0
-    fields = ('var_name', 'obis_code', 'unit', 'conversion_factor', 'show_on_graph') 
+    fields = (
+        'var_name', 'obis_code', 'unit', 'conversion_factor',
+         'data_type', 'show_on_graph'
+    )
     sortable = 'order'
     classes = ['dlms-inline']
     
+    #class Media:
+    #    js = ('admin/js/dlms_variable_inline.js',)
     
 class ComputedVariableInline(SortableStackedInline, admin.StackedInline):
     model = ComputedVariable
@@ -61,7 +66,7 @@ class DeviceAdmin(SortableAdminBase, admin.ModelAdmin):
     exclude = ('user',)  # Hide the actual editable ManyToMany field
     fieldsets = (
         (None, {
-            'fields': ( 'is_enabled', 'name', 'Gateway', 'protocol', 'slave_id','register_type', 'start_address', 'bytes_count', 'port')
+            'fields': ( 'is_enabled', 'name', 'Gateway', 'protocol', 'slave_id','register_type', 'start_address', 'bytes_count', 'port', 'days')
         }),
         ('Energy Display Options', {
             'fields': ('show_energy','show_energy_daily', 'show_energy_weekly', 'show_energy_monthly'),

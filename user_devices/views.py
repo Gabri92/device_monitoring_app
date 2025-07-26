@@ -8,12 +8,20 @@ from django.shortcuts import redirect
 from .commands import set_pin_status
 from user_devices.functions import sanitize_variable_name  # or wherever it is
 import json
+import logging 
 
 def base_redirect(request):
     if request.user.is_authenticated:
         return redirect('home/')
     else:
         return redirect('login/')
+
+# Configure logging
+logging.basicConfig(
+    level=logging.INFO,
+    format='%(asctime)s [%(levelname)s] %(message)s',
+)
+logger = logging.getLogger(__name__)
 
 def home_view(request):
 
@@ -22,7 +30,29 @@ def home_view(request):
     
     user = request.user
     gateways = Gateway.objects.filter(user=user)
-    devices = Device.objects.filter(user=user)
+    # Get user's gateways
+    gateways = Gateway.objects.filter(user=user)
+    
+    # Get devices through the gateway relationship
+    all_devices = Device.objects.filter(Gateway__in=gateways)
+    devices = all_devices.filter(is_enabled=True)
+
+    # Add debug logging
+    logger.info("==================== HOME VIEW DEBUG INFO ====================")
+    logger.info(f"User: {user.username}")
+    logger.info(f"User ID: {user.id}")
+    logger.info(f"User's gateways: {gateways.count()}")
+    logger.info("Gateway details:")
+    for gateway in gateways:
+        logger.info(f"  Gateway: {gateway.name} ({gateway.ip_address})")
+        logger.info(f"  Devices on this gateway:")
+        for dev in gateway.devices.all():
+            logger.info(f"    - {dev.name} (enabled: {dev.is_enabled})")
+    
+    logger.info(f"\nTotal devices through gateways: {all_devices.count()}")
+    logger.info(f"Enabled devices: {devices.count()}")
+    logger.info("=========================================================")
+    
     return render(request, 'home.html',
                   {'user': user, 
                    'gateways': gateways, 
@@ -30,9 +60,16 @@ def home_view(request):
                    })  # Create a home.html template
 
 
-def device_detail_view(request,device_name):
-    # Retrieve the device object
-    device = get_object_or_404(Device, name=device_name, user=request.user)
+def device_detail_view(request, device_name):
+    # Get user's gateways first
+    user_gateways = Gateway.objects.filter(user=request.user)
+    
+    # Find device through gateway relationship
+    device = get_object_or_404(
+        Device, 
+        name=device_name,
+        Gateway__in=user_gateways  # Check device belongs to user's gateways
+    )
 
     # Retrieve the buttons for this device
     buttons = Button.objects.filter(Gateway=device.Gateway, show_in_user_page=True)
@@ -40,7 +77,7 @@ def device_detail_view(request,device_name):
     # Pass everything to the template
     context = {
         "gateway": device.Gateway,
-        "device":  device,
+        "device": device,
         "buttons": buttons,
         "y_label": "",
         "x_data": [],
@@ -48,6 +85,7 @@ def device_detail_view(request,device_name):
         "chart_error": "No data configure for this device yet.",
         "data": None
     }
+
 
     # Retrieve last data from the device
     counter_data = DeviceData.objects.filter(device_name=device).order_by('-timestamp').first()

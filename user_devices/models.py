@@ -21,7 +21,7 @@ class Device(models.Model):
     slave_id = models.IntegerField(default=-1, help_text="Slave ID of the device(nr between 1 to 247)", null=True, blank=True)
     start_address = models.CharField(default = 0, help_text="Starting Modbus address in hexadecimal (e.g., 0x0280)", null=True, blank=True)
     bytes_count = models.PositiveIntegerField(default=1, help_text="Total number of consecutive bytes to read", null=True, blank=True)
-    port = models.IntegerField(default=502, null=True, blank=True)
+    port = models.IntegerField(default=0)
     show_energy = models.BooleanField(default=False, help_text="Show real time energy production/consumption")
     show_energy_daily = models.BooleanField(default=False, help_text="Show daily energy production/consumption")
     show_energy_weekly = models.BooleanField(default=False, help_text="Show weekly energy production/consumption")
@@ -41,6 +41,13 @@ class Device(models.Model):
         help_text='Type of protocol for the readings'
     )
     
+    days = models.PositiveIntegerField(
+        default=1,
+        null=True,
+        blank=True,
+        help_text="Number of days to retrieve (only for profile)."
+    )
+
     class Meta:
         ordering = ['id']  
     def __str__(self):
@@ -59,7 +66,6 @@ class DeviceVariable(models.Model):
     )
     var_name = models.CharField(max_length=100, help_text="Name of the variable (e.g., Voltage, Power)", null=True, blank=True)
     unit = models.CharField(max_length=20, help_text="Measurement unit (e.g., V, A, W)", null=True, blank=True)
-    conversion_factor = models.CharField(default="1", help_text="Factor to convert raw data to physical value", null=True, blank=True)
     show_on_graph = models.BooleanField(default=False, help_text="Show this variable on the graph")
     order = models.PositiveIntegerField(default=0)  # 🆕 for sorting
 
@@ -79,7 +85,7 @@ class DeviceVariable(models.Model):
 class ModbusMappingVariable(DeviceVariable):
     device = models.ForeignKey(Device, on_delete=models.CASCADE, related_name="modbus_variables", null=True, blank=True)
     address = models.CharField(default="",help_text="Address of the mapped value", null=True, blank=True)
-    unit = models.CharField(max_length=20, help_text="Measurement unit (e.g., V, A, Hz)", null=True, blank=True)
+    conversion_factor = models.CharField(default="1", help_text="Factor to convert raw data to physical value", null=True, blank=True)
     bit_length = models.PositiveIntegerField(
         choices=[(16, '16 bit'), (32, '32 bit'), (64, '64 bit')],
         default=16,
@@ -95,8 +101,20 @@ class ModbusMappingVariable(DeviceVariable):
 
 class DlmsMappingVariable(DeviceVariable):
     device = models.ForeignKey(Device, on_delete=models.CASCADE, related_name="dlms_variables", null=True, blank=True)
+    conversion_factor = models.CharField(default="1", help_text="Factor to convert raw data to physical value", null=True, blank=True)
     obis_code = models.CharField(default="",help_text="Address of the mapped value", null=True, blank=True)
+    DATA_TYPE_CHOICES = [
+    ('clock', 'Clock'),
+    ('profile', 'Profile'),
+    ]
 
+    data_type = models.CharField(
+        max_length=10,
+        choices=DATA_TYPE_CHOICES,
+        default='clock',
+        help_text="Select whether this variable is a clock or profile."
+    )
+    
     def __str__(self):
         return f"{self.var_name}"
     
@@ -105,7 +123,6 @@ class ComputedVariable(DeviceVariable):
     formula = models.TextField(
         help_text="Formula to calculate the value (e.g., 'voltage * current'). Variables must match existing MemoryMapping variable names"
     )
-    unit = models.CharField(max_length=20, help_text="Measurement unit (e.g., W, kW, etc.)")
 
     def __str__(self):
         return f"{self.var_name} (Computed)"

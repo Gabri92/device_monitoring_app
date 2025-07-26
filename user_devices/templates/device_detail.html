@@ -36,7 +36,63 @@
     </div>
 
     <main class="main-content">
+        {% if device.protocol == 'dlms' %}
+        <!-- DLMS specific view -->
+        <div class="box-container">
+            <!-- Clock Box -->
+            <div class="vertical-boxes">
+                <section class="info-box clock-box">
+                    <h2>Clock</h2>
+                    {% if data %}
+                        <p class="clock-value">{{ data.data.profile.clock }}</p>
+                    {% else %}
+                        <p>No clock data available.</p>
+                    {% endif %}
+                </section>
+        
+            <!-- Latest Reading Box -->
+            <section class="info-box latest-reading-box">
+                <h2>Latest Reading (Column 3)</h2>
+                {% if data %}
+                    {% with last_row=data.data.profile.values|last %}
+                        <p class="latest-value">{{ last_row.2 }}</p>
+                    {% endwith %}
+                {% else %}
+                    <p>No data available.</p>
+                {% endif %}
+            </section>
+        </div>
 
+            <!-- Values Table Box -->
+            <section class="info-box">
+                <h2>Profile Values</h2>
+                {% if data %}
+                    <div class="table-container">
+                        <table class="values-table">
+                            <thead>
+                                <tr>
+                                    {% for value in data.data.profile.values|first %}
+                                        <th>Column {{ forloop.counter }}</th>
+                                    {% endfor %}
+                                </tr>
+                            </thead>
+                            <tbody>
+                                {% for row in data.data.profile.values|slice:"-50:" %}
+                                    <tr>
+                                        {% for value in row %}
+                                            <td>{{ value }}</td>
+                                        {% endfor %}
+                                    </tr>
+                                {% endfor %}
+                            </tbody>
+                        </table>
+                    </div>
+                {% else %}
+                    <p>No profile data available.</p>
+                {% endif %}
+            </section>
+        </div>
+    {% else %}
         <section class="graph-section">
             <h2>Chart</h2>
         
@@ -155,8 +211,15 @@
             <p>No buttons available for this device.</p>
             {% endif %}
         </section>
-
+        {% endif %}
     </main>
-
+    <script>
+        window.addEventListener('DOMContentLoaded', (event) => {
+            const tableContainer = document.querySelector('.table-container');
+            if (tableContainer) {
+                tableContainer.scrollTop = tableContainer.scrollHeight;
+            }
+        });
+    </script>
 </body>
 </html>
