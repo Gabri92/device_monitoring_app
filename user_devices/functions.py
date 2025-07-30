@@ -24,7 +24,7 @@ def sanitize_variable_name(name):
 Reads DLMS registers for a given device.
 """
 def read_dlms_values(device):
-    mockup_reading = True
+
 
     mapped_values = {}
     gateway_ip = device.Gateway.ip_address
@@ -35,8 +35,8 @@ def read_dlms_values(device):
     ############################################################
     # MODIFICA TEMPORANEA PER LEGGERE DATI DAL CLIENTE ATTUALE #
     ############################################################
-    if not mockup_reading:
-        for mapping in dlms_mappings:
+    for mapping in dlms_mappings:
+        try:
             response = requests.get(f"http://{gateway_ip}:{gateway_port}/dlms/profile?obis_code={mapping.obis_code}")
             if response.ok:
                 data = response.json()
@@ -45,25 +45,8 @@ def read_dlms_values(device):
                 mapped_values[mapping.var_name] = data['values']  # Adjust based on actual response format
                 logger.info(f"Read DLMS value for {mapping.var_name} (OBIS: {mapping.obis_code}): {data}")
             else:
-                logger.error(f"Failed to read OBIS code {mapping.obis_code} for {mapping.var_name}")
-                logger.info(response)
-    else:
-        try:        
-            # Get profile data second
-            profile_response = requests.get(f"http://{gateway_ip}:{gateway_port}/dlms/profile?obis_code=0.0.99.1.0.255&days={device.days}")
-            if not profile_response.ok:
-                logger.error(f"Failed to get profile data: {profile_response.status_code}")
+                logger.error(f"Failed to get profile data: {response.status_code}")
                 return None
-                
-            profile_data = profile_response.json()
-            
-            # Combine the data
-            mapped_values = {
-                'profile': profile_data
-            }
-            
-            return mapped_values
-            
         except requests.exceptions.RequestException as e:
             logger.error(f"Network error while reading DLMS values: {e}")
             return None
@@ -73,6 +56,12 @@ def read_dlms_values(device):
         except Exception as e:
             logger.error(f"Unexpected error in read_dlms_values: {e}")
             return None
+        
+    # Combine the data
+    mapped_values = {
+        'profile': 0
+    }        
+    return mapped_values
 
 
      

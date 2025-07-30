@@ -41,13 +41,6 @@ class Device(models.Model):
         help_text='Type of protocol for the readings'
     )
     
-    days = models.PositiveIntegerField(
-        default=1,
-        null=True,
-        blank=True,
-        help_text="Number of days to retrieve (only for profile)."
-    )
-
     class Meta:
         ordering = ['id']  
     def __str__(self):
@@ -103,18 +96,8 @@ class DlmsMappingVariable(DeviceVariable):
     device = models.ForeignKey(Device, on_delete=models.CASCADE, related_name="dlms_variables", null=True, blank=True)
     conversion_factor = models.CharField(default="1", help_text="Factor to convert raw data to physical value", null=True, blank=True)
     obis_code = models.CharField(default="",help_text="Address of the mapped value", null=True, blank=True)
-    DATA_TYPE_CHOICES = [
-    ('clock', 'Clock'),
-    ('profile', 'Profile'),
-    ]
+    column_idx = models.IntegerField(default=1, help_text="Column of the profile generic to read")
 
-    data_type = models.CharField(
-        max_length=10,
-        choices=DATA_TYPE_CHOICES,
-        default='clock',
-        help_text="Select whether this variable is a clock or profile."
-    )
-    
     def __str__(self):
         return f"{self.var_name}"
     

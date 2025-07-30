@@ -14,8 +14,6 @@ document.addEventListener('DOMContentLoaded', function () {
             .form-row.field-bytes_count
         `);
 
-        const dlmsFields = document.querySelectorAll('.form-row.field-days');
-
         if (!protocolSelect) return;
 
         const value = protocolSelect.value;
@@ -23,10 +21,8 @@ document.addEventListener('DOMContentLoaded', function () {
 
         if (value === 'modbus') {
             modbusFields.forEach(el => el.style.display = '');
-            dlmsFields.forEach(el => el.style.display = 'none');
         } else if (value === 'dlms') {
             modbusFields.forEach(el => el.style.display = 'none');
-            dlmsFields.forEach(el => el.style.display = '');
         }
         console.log('Found fields:', modbusFields);
 

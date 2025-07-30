@@ -40,8 +40,7 @@ class MemoryMappingInlineDlms(SortableStackedInline, admin.StackedInline):
     form = DlmsMappingVariableForm
     extra = 0
     fields = (
-        'var_name', 'obis_code', 'unit', 'conversion_factor',
-         'data_type', 'show_on_graph'
+        'var_name', 'obis_code', 'unit', 'conversion_factor','column_idx'
     )
     sortable = 'order'
     classes = ['dlms-inline']
@@ -66,7 +65,7 @@ class DeviceAdmin(SortableAdminBase, admin.ModelAdmin):
     exclude = ('user',)  # Hide the actual editable ManyToMany field
     fieldsets = (
         (None, {
-            'fields': ( 'is_enabled', 'name', 'Gateway', 'protocol', 'slave_id','register_type', 'start_address', 'bytes_count', 'port', 'days')
+            'fields': ( 'is_enabled', 'name', 'Gateway', 'protocol', 'slave_id','register_type', 'start_address', 'bytes_count', 'port')
         }),
         ('Energy Display Options', {
             'fields': ('show_energy','show_energy_daily', 'show_energy_weekly', 'show_energy_monthly'),
