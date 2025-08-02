@@ -38,6 +38,11 @@ def home_view(request):
     all_devices = Device.objects.filter(Gateway__in=gateways)
     devices = all_devices.filter(is_enabled=True)
 
+    # Variabili da mostrare in homepage
+    modbus_vars = ModbusMappingVariable.objects.filter(show_in_homepage=True, device__in=devices)
+    dlms_vars = DlmsMappingVariable.objects.filter(show_in_homepage=True, device__in=devices)
+    computed_vars = ComputedVariable.objects.filter(show_in_homepage=True, device__in=devices)
+
     # Add debug logging
     logger.info("==================== HOME VIEW DEBUG INFO ====================")
     logger.info(f"User: {user.username}")
@@ -54,11 +59,47 @@ def home_view(request):
     logger.info(f"Enabled devices: {devices.count()}")
     logger.info("=========================================================")
     
-    return render(request, 'home.html',
-                  {'user': user, 
-                   'gateways': gateways, 
-                   'devices': devices
-                   })  # Create a home.html template
+    var_rows = []
+    for var in list(modbus_vars) + list(dlms_vars) + list(computed_vars):
+        last_data = DeviceData.objects.filter(device_name=var.device).order_by('-timestamp').first()
+        if last_data and var.var_name in last_data.data:
+            raw = last_data.data.get(var.var_name)
+
+            if isinstance(var, DlmsMappingVariable) and isinstance(raw, dict):
+                value = raw.get("value", "N/A")
+                timestamp_raw = raw.get("timestamp", last_data.timestamp)
+                try:
+                    timestamp = datetime.fromisoformat(timestamp_raw)
+                except Exception:
+                    timestamp = last_data.timestamp
+            elif isinstance(raw, dict) and "value" in raw:
+                value = raw["value"]
+                timestamp = last_data.timestamp
+            else:
+                value = raw
+                timestamp = last_data.timestamp
+
+            try:
+                value = float(value) * float(var.conversion_factor)
+            except Exception:
+                pass  # fallback se non numerico
+
+            var_rows.append({
+                'device_name': var.device.name,
+                'var_name': var.var_name,
+                'value': value,
+                'unit': var.unit,
+                'conversion_factor': var.conversion_factor,
+                'timestamp': timestamp,
+            })
+
+
+    return render(request, 'home.html', {
+        'user': user,
+        'gateways': gateways,
+        'devices': devices,
+        'var_rows': var_rows
+    })
 
 
 def device_detail_view(request, device_name):

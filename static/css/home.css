@@ -8,20 +8,17 @@ body, ul {
 body {
     font-family: Arial, sans-serif;
     background-color: #f5f5f5;
-    display: flex;
-    flex-wrap: wrap;
-    margin: 0;
 }
 
-header {
+.header-container {
+    background-color: #305f84;
+    color: white;
     display: flex;
-    flex-wrap: wrap;
     justify-content: space-between;
     align-items: center;
-    width: 100%;
     padding: 20px;
-    background-color: #336791;
-    color: white;
+    width: 100%;
+    box-sizing: border-box;
 }
 
 .user-name{
@@ -38,7 +35,28 @@ main {
     display: flex;
     justify-content: left;
     flex-wrap: wrap;
-    width: 100%;
+}
+
+.main-content {
+    display: flex;
+    flex-direction: column;
+}
+
+.flex-row {
+    display: flex;
+    gap: 20px;
+    flex-wrap: wrap;
+}
+
+.device-container,
+.gateway-container {
+    background-color: white;
+    padding: 20px;
+    border-radius: 10px;
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+    padding: 50px;
+    min-width: 200px;
+    margin: 20px;
 }
 
 /* Section Styles */
@@ -46,7 +64,7 @@ section {
     background-color: white;
     border-radius: 8px;
     box-shadow: 0px 4px 8px rgba(0, 0, 0, 0.1);
-    margin: 20px;
+    margin: 20px 0 0 0;
 }
 
 section h2 {
@@ -55,14 +73,6 @@ section h2 {
     border-bottom: 2px solid #ddd;
     padding-bottom: 5px;
     margin-bottom: 20px;
-}
-
-.gateway-container{
-    padding: 50px;
-}
-
-.device-container{
-    padding: 50px;
 }
 
 .device-container li a{
@@ -108,4 +118,50 @@ button[type="submit"] {
 
 button[type="submit"]:hover {
     background-color: #afafaf;
+}
+
+/* Box container like other cards */
+.variables-homepage {
+    background-color: white;
+    padding: 20px;
+    border-radius: 10px;
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+    overflow-x: auto;
+    margin: 20px;
+}
+
+.variables-homepage h2 {
+    color: #305f84;
+    font-weight: bold;
+    border-bottom: 2px solid #e1e1e1;
+    padding-bottom: 10px;
+    margin-bottom: 20px;
+}
+
+.variables-homepage table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 15px;
+    min-width: 800px;
+}
+
+.variables-homepage th,
+.variables-homepage td {
+    padding: 10px 12px;
+    border-bottom: 1px solid #e1e1e1;
+    text-align: left;
+}
+
+.variables-homepage th {
+    background-color: #f4f6f8;
+    font-weight: bold;
+    color: #333;
+}
+
+.variables-homepage tr:nth-child(even) {
+    background-color: #f9f9f9;
+}
+
+.variables-homepage tr:hover {
+    background-color: #f1f1f1;
 }

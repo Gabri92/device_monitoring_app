@@ -37,19 +37,18 @@ def scan_and_read_devices(gateway_ip):
 
             for device in devices:
                 if device.is_enabled:
-                    logger.info(f"Protocol: {device.protocol}")
-                    if device.protocol == 'modbus':
-                        client = ModbusTcpClient(gateway.ip_address, port=device.port)
-                        connection = client.connect()
-                        if not connection:
-                            logger.warning(f"Failed to connect to device on {gateway.ip_address}:{device.port}")
-                            client.close()
-                            continue
-
-                    logger.info(f"Connected to device {device.name} on {gateway.ip_address}:{device.port}")
                     try:
-                        
-                        if device.protocol == 'modubs':
+                        logger.info(f"Protocol: {device.protocol}")
+                        if device.protocol == 'modbus':
+                            client = ModbusTcpClient(gateway.ip_address, port=device.port)
+                            connection = client.connect()
+                            if not connection:
+                                logger.warning(f"Failed to connect to device on {gateway.ip_address}:{device.port}")
+                                client.close()
+                                continue
+                            
+                            logger.info(f"Connected to device {device.name} on {gateway.ip_address}:{device.port}")
+                            
                             # Step 1a: Read raw Modbus registers
                             base_values = read_modbus_registers(device, client)
                             logger.info(f"Values read: {base_values}")
@@ -66,20 +65,22 @@ def scan_and_read_devices(gateway_ip):
 
                             logger.info(f"Final values: {values}")
                         elif device.protocol == 'dlms':
+                            logger.info(f"Connected to device {device.name} on {gateway.ip_address}:{device.port}")
                             values = read_dlms_values(device)
                             logger.info(f"Values read: {values}")
                         
                         else:
                             continue
+                        
+                        if values is not None:
+                            # Step 5: Compute energy
+                            device_data = DeviceData.objects.filter(device_name__name=device.name)
+                            energy_values = compute_energy(values, device_data)
+                            values.update(energy_values)
 
-                        # Step 5: Compute energy
-                        device_data = DeviceData.objects.filter(device_name__name=device.name)
-                        energy_values = compute_energy(values, device_data)
-                        values.update(energy_values)
-
-                        # Step 6: Store in DB
-                        store_data_in_database(device, values)
-                        logger.info(f"Data saved for device {device.name}")
+                            # Step 6: Store in DB
+                            store_data_in_database(device, values)
+                            logger.info(f"Data saved for device {device.name}")
 
                     except Exception as e:
                         logger.error(f"Error while reading values for device {device.name}: {e}")

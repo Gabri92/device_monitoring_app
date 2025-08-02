@@ -60,6 +60,7 @@ class DeviceVariable(models.Model):
     var_name = models.CharField(max_length=100, help_text="Name of the variable (e.g., Voltage, Power)", null=True, blank=True)
     unit = models.CharField(max_length=20, help_text="Measurement unit (e.g., V, A, W)", null=True, blank=True)
     show_on_graph = models.BooleanField(default=False, help_text="Show this variable on the graph")
+    show_in_homepage = models.BooleanField(default=False, help_text="Show this variable in the homepage")
     order = models.PositiveIntegerField(default=0)  # 🆕 for sorting
 
     class Meta:

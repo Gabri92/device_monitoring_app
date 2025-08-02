@@ -10,7 +10,6 @@
 </head>
 
 <body>
-
     <header class="header-container">
         <div class="user-name">
             <h2>Welcome, {{ user.username }}!</h2>
@@ -22,41 +21,73 @@
             </form>
         </div>
     </header>
-
     <main class="main-content">
+        <section class="variables-homepage">
+            <h2>Highlighted Variables</h2>
+            {% if var_rows %}
+            <table>
+                <thead>
+                    <tr>
+                        <th>Device</th>
+                        <th>Variable Name</th>
+                        <th>Value</th>
+                        <th>Unit</th>
+                        <th>Conversion Factor</th>
+                        <th>Timestamp</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for var in var_rows %}
+                        <tr>
+                            <td>{{ var.device_name }}</td>
+                            <td>{{ var.var_name }}</td>
+                            <td>{{ var.value }}</td>
+                            <td>{{ var.unit }}</td>
+                            <td>{{ var.conversion_factor }}</td>
+                            <td>{{ var.timestamp|date:"M d, Y, g:i a" }}</td>
+                        </tr>
+                    {% endfor %}
+                </tbody>
+            </table>            
+            {% else %}
+                <p>No variables selected for homepage view.</p>
+            {% endif %}
+        </section>
+        <!-- Devices and Gateways Side by Side -->
+    <div class="flex-row">
         <section class="gateway-container">
-            <h2> Gateways Connected </h2>
+            <h2>Gateways Connected</h2>
             {% for gateway in gateways %}
-            <li>
-                Gateway connected with ip {{ gateway.ip_address }}
-                {% with enabled_devices=gateway.devices.all|dictsort:"port" %}
-                    {% if enabled_devices %}
-                        - connected devices: 
-                        {% for device in enabled_devices %}
-                            {% if device.is_enabled %}
-                                {{ device.name }} (port {{ device.port }}){% if not forloop.last %}, {% endif %}
-                            {% endif %}
-                        {% endfor %}
-                    {% endif %}
-                {% endwith %}
-            </li>
+                <li>
+                    Gateway connected with ip {{ gateway.ip_address }}
+                    {% with enabled_devices=gateway.devices.all|dictsort:"port" %}
+                        {% if enabled_devices %}
+                            - connected devices: 
+                            {% for device in enabled_devices %}
+                                {% if device.is_enabled %}
+                                    {{ device.name }} (port {{ device.port }}){% if not forloop.last %}, {% endif %}
+                                {% endif %}
+                            {% endfor %}
+                        {% endif %}
+                    {% endwith %}
+                </li>
             {% empty %}
-            <p>No gateways found.</p>
+                <p>No gateways found.</p>
             {% endfor %}
         </section>
-
         <section class="device-container">
-            <h2> Your Devices </h2>
+            <h2>Your Devices</h2>
             <ul>
                 {% for device in devices %}
                     <li class="device-item">
                         <a href="{% url 'device_detail' device.name %}">{{ device.name }}</a>
                     </li>
                 {% empty %}
-                <p>No enabled devices found.</p>
+                    <p>No enabled devices found.</p>
                 {% endfor %}
             </ul>
         </section>
+    </div>
     </main>
 </body>
 

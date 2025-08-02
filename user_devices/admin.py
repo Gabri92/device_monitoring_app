@@ -31,7 +31,7 @@ class GatewayAdmin(admin.ModelAdmin):
 class MemoryMappingInlineModbus(SortableStackedInline, admin.StackedInline):
     model = ModbusMappingVariable
     extra = 0
-    fields = ('var_name', 'address', 'unit', 'conversion_factor', 'bit_length', 'is_signed', 'show_on_graph') 
+    fields = ('var_name', 'address', 'unit', 'conversion_factor', 'bit_length', 'is_signed', 'show_on_graph', 'show_in_homepage') 
     sortable = 'order'
     classes = ['modbus-inline']
     
@@ -40,7 +40,7 @@ class MemoryMappingInlineDlms(SortableStackedInline, admin.StackedInline):
     form = DlmsMappingVariableForm
     extra = 0
     fields = (
-        'var_name', 'obis_code', 'unit', 'conversion_factor','column_idx','show_on_graph'
+        'var_name', 'obis_code', 'unit', 'conversion_factor','column_idx','show_on_graph', 'show_in_homepage'
     )
     sortable = 'order'
     classes = ['dlms-inline']
