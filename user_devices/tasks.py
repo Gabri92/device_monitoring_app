@@ -64,16 +64,18 @@ def scan_and_read_devices(gateway_ip):
                             # Step 4: Merge values
                             values = {**mapped_values, **computed_values}
 
-                            # Step 5: Compute energy
-                            device_data = DeviceData.objects.filter(device_name__name=device.name)
-                            energy_values = compute_energy(values, device_data)
-                            values.update(energy_values)
                             logger.info(f"Final values: {values}")
                         elif device.protocol == 'dlms':
                             values = read_dlms_values(device)
                             logger.info(f"Values read: {values}")
+                        
                         else:
                             continue
+
+                        # Step 5: Compute energy
+                        device_data = DeviceData.objects.filter(device_name__name=device.name)
+                        energy_values = compute_energy(values, device_data)
+                        values.update(energy_values)
 
                         # Step 6: Store in DB
                         store_data_in_database(device, values)

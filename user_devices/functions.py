@@ -10,15 +10,12 @@ from decimal import Decimal
 from django.db.models import Sum
 from django.db.models.expressions import RawSQL
 from fractions import Fraction
+from .helper_funcs import sanitize_variable_name, convert_value
 
 logger = logging.getLogger(__name__)
 
 MAX_WORDS_PER_READ = 12
 TIMEOUT = 5                 # Timeout per la connessione
-
-# Helper to sanitize variable names
-def sanitize_variable_name(name):
-    return name.replace("-", "_").replace(" ", "_")
 
 """
 Reads DLMS registers for a given device.
@@ -37,13 +34,26 @@ def read_dlms_values(device):
     ############################################################
     for mapping in dlms_mappings:
         try:
-            response = requests.get(f"http://{gateway_ip}:{gateway_port}/dlms/profile?obis_code={mapping.obis_code}")
+            response = requests.get(f"http://{gateway_ip}:{gateway_port}/dlms/profile?obis_code={mapping.obis_code}&column={mapping.column_idx}")
             if response.ok:
                 data = response.json()
-                logger.info(response.json())
+                logger.info(data)
+
+                reading = data['value']        
+                last_reading_time = data['time_of_reading']
+
                 # Store the value with the variable name as key
-                mapped_values[mapping.var_name] = data['values']  # Adjust based on actual response format
-                logger.info(f"Read DLMS value for {mapping.var_name} (OBIS: {mapping.obis_code}): {data}")
+                converted_value = convert_value(reading, mapping.conversion_factor)
+
+                sanitized_name = sanitize_variable_name(mapping.var_name)
+                
+                mapped_values[sanitized_name] = {
+                    "value": converted_value,
+                    "unit": mapping.unit,
+                    "timestamp": last_reading_time
+                }
+                logger.info(f"Read DLMS value for {sanitized_name} (OBIS: {mapping.obis_code}): {converted_value} {mapping.unit}")
+                logger.info(f"Mapped values: {mapped_values}")
             else:
                 logger.error(f"Failed to get profile data: {response.status_code}")
                 return None
@@ -56,15 +66,11 @@ def read_dlms_values(device):
         except Exception as e:
             logger.error(f"Unexpected error in read_dlms_values: {e}")
             return None
-        
-    # Combine the data
-    mapped_values = {
-        'profile': 0
-    }        
+          
+    json_result = json.dumps(mapped_values, indent=4)
+    logger.info(f"Mapped JSON: {json_result}")
     return mapped_values
 
-
-     
 
 """
 Reads Modbus registers for a given device.
@@ -131,19 +137,11 @@ def map_variables(base_values, device):
             # I registri Modbus sono big-endian per default
             raw_bytes = b''.join(reg.to_bytes(2, byteorder='big') for reg in registers)
             raw_value = int.from_bytes(raw_bytes, byteorder='big', signed=mapping.is_signed)
-
+            
             # Applico il conversion factor
-            try:
-                logger.info(f"Conv factor from mapping: {mapping.conversion_factor}")
-                if mapping.conversion_factor.__contains__("/"):
-                    conversion_factor = float(Fraction(mapping.conversion_factor))
-                else:
-                    conversion_factor = float(mapping.conversion_factor)
-            except (ValueError, TypeError, ZeroDivisionError):
-                logger.warning(f"Invalid conversion factor for {mapping.var_name}: {mapping.conversion_factor}. Defaulting to 0.")
-                conversion_factor = 0.0
-            logger.info(f"Conversion factor: {conversion_factor}")
-            converted_value = raw_value * conversion_factor
+            converted_value = convert_value(raw_value, mapping.conversion_factor)
+
+            # Salvo il valore nel dizionario
             sanitized_name = sanitize_variable_name(mapping.var_name)
             mapped_values[sanitized_name] = {
                 "value": converted_value,
@@ -355,23 +353,7 @@ def compute_energy(variables, device_data):
 Save device data into the DeviceData model.
 """
 def store_data_in_database(device, data):
-    try:
-        # Check if device uses DLMS protocol
-        if hasattr(device, 'protocol') and device.protocol == 'dlms':
-            # Delete the last entry for this device
-            last_entry = DeviceData.objects.filter(
-                device_name=device,
-                Gateway=device.Gateway
-            ).order_by('-timestamp').first()
-            
-            # Delete it if it exists
-            if last_entry:
-                try:
-                    last_entry.delete()
-                    logger.info(f"Deleted previous DLMS entry for device {device.name}")
-                except Exception as del_error:
-                    logger.error(f"Error deleting previous DLMS entry: {del_error}")
-        
+    try:      
         dev_data = DeviceData.objects.create(
             Gateway=device.Gateway,
             device_name=device,
