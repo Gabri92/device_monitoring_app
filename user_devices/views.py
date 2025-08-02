@@ -3,12 +3,13 @@ from django.contrib import messages
 from django.contrib.auth import authenticate, login, logout
 from django.shortcuts import render
 from django.shortcuts import render, get_object_or_404
-from .models import Device, Button, Gateway, ComputedVariable, ModbusMappingVariable, DeviceData
+from .models import Device, Button, Gateway, ComputedVariable, ModbusMappingVariable, DlmsMappingVariable, DeviceData
 from django.shortcuts import redirect
 from .commands import set_pin_status
-from user_devices.functions import sanitize_variable_name  # or wherever it is
+from user_devices.helper_funcs import sanitize_variable_name
 import json
 import logging 
+from datetime import datetime
 
 def base_redirect(request):
     if request.user.is_authenticated:
@@ -119,16 +120,27 @@ def device_detail_view(request, device_name):
 
     # Retrieve historic data for chart
     y_variable = ComputedVariable.objects.filter(device=device, show_on_graph=True).first() or \
-    ModbusMappingVariable.objects.filter(device=device, show_on_graph=True).first()
+    ModbusMappingVariable.objects.filter(device=device, show_on_graph=True).first() or \
+    DlmsMappingVariable.objects.filter(device=device, show_on_graph=True).first()
 
     if y_variable:
         
         # Example: Generate dummy time-series data for demonstration
+        
         chart_data = DeviceData.objects.filter(device_name=device).order_by('-timestamp')[:20][::-1]
-        timestamps = [entry.timestamp.strftime("%Y-%m-%d %H:%M:%S") for entry in chart_data]
-        x_data = timestamps  # Example X values
+        
         sanitized_name = sanitize_variable_name(y_variable.var_name)
+        if device.protocol == "dlms":
+            timestamps = [
+                datetime.fromisoformat(entry.data.get(sanitized_name, {}).get("timestamp", "")).strftime("%Y:%m:%d %H:%M")
+                for entry in chart_data
+                if entry.data.get(sanitized_name, {}).get("timestamp")  # evita None
+            ]      
+        elif device.protocol == "modubs":
+            timestamps = [entry.timestamp.strftime("%Y-%m-%d %H:%M:%S") for entry in chart_data]    
+        x_data = timestamps  # Example X values
         y_data = [entry.data.get(sanitized_name, {}).get("value", None) for entry in chart_data]
+
         # Assume you have logic to generate x_data and y_data
         context["x_data"] = json.dumps(x_data)
         context["y_data"] = json.dumps(y_data)

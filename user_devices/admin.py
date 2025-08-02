@@ -40,7 +40,7 @@ class MemoryMappingInlineDlms(SortableStackedInline, admin.StackedInline):
     form = DlmsMappingVariableForm
     extra = 0
     fields = (
-        'var_name', 'obis_code', 'unit', 'conversion_factor','column_idx'
+        'var_name', 'obis_code', 'unit', 'conversion_factor','column_idx','show_on_graph'
     )
     sortable = 'order'
     classes = ['dlms-inline']

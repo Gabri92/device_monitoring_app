@@ -352,8 +352,29 @@ def compute_energy(variables, device_data):
 """
 Save device data into the DeviceData model.
 """
-def store_data_in_database(device, data):
-    try:      
+def store_data_in_database(device, data):     
+    try:
+        if device.protocol == "dlms":
+            latest_entry = DeviceData.objects.filter(
+                device_name=device
+            ).order_by('-timestamp').first()
+
+            # Ottieni l'ultima lettura salvata per confronto
+            if latest_entry:
+                existing_data = latest_entry.data
+                for key in data:
+                    if key in existing_data:
+                        last_ts = existing_data[key].get("timestamp")
+                        current_ts = data[key].get("timestamp")
+
+                        # Converti entrambi i timestamp a datetime
+                        if last_ts and current_ts:
+                            last_time = datetime.fromisoformat(last_ts).strftime("%H:%M")
+                            current_time = datetime.fromisoformat(current_ts).strftime("%H:%M")
+
+                            if last_time == current_time:
+                                logger.info(f"Skipped {key}: already stored at {current_time}")
+                                return
         dev_data = DeviceData.objects.create(
             Gateway=device.Gateway,
             device_name=device,
