@@ -59,10 +59,10 @@
             <h2>Gateways Connected</h2>
             {% for gateway in gateways %}
                 <li>
-                    Gateway connected with ip {{ gateway.ip_address }}
+                    Gateway connected with ip {{ gateway.ip_address }}<br>
                     {% with enabled_devices=gateway.devices.all|dictsort:"port" %}
                         {% if enabled_devices %}
-                            - connected devices: 
+                            Connected devices: 
                             {% for device in enabled_devices %}
                                 {% if device.is_enabled %}
                                     {{ device.name }} (port {{ device.port }}){% if not forloop.last %}, {% endif %}
