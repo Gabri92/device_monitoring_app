@@ -93,6 +93,46 @@ def home_view(request):
                 'timestamp': timestamp,
             })
 
+    # Energy data
+    for device in devices:
+        last_data = DeviceData.objects.filter(device_name=device).order_by('-timestamp').first()
+        if not last_data:
+            continue
+        energy_data = last_data.data
+
+        def add_energy_row(name, value):
+            if isinstance(value, dict):
+                val = value.get("value", "N/A")
+                val = round(val,2)
+            else:
+                val = value
+            var_rows.append({
+                'device_name': device.name,
+                'var_name': name,
+                'value': val,
+                'unit': 'kWh',
+                'conversion_factor': '1',
+                'timestamp': last_data.timestamp,
+            })
+
+        if device.show_energy and 'Energy' in energy_data:
+            add_energy_row('Energy', energy_data['Energy'])
+
+        if device.show_energy_daily:
+            for key, val in energy_data.items():
+                if key.startswith('Energy_daily'):
+                    add_energy_row(key, val)
+
+        if device.show_energy_weekly:
+            for key, val in energy_data.items():
+                if key.startswith('Energy_weekly'):
+                    add_energy_row(key, val)
+
+        if device.show_energy_monthly:
+            for key, val in energy_data.items():
+                if key.startswith('Energy_monthly'):
+                    add_energy_row(key, val)
+
 
     return render(request, 'home.html', {
         'user': user,
