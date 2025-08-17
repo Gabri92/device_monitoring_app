@@ -81,7 +81,7 @@ DATABASES = {
         'NAME': 'energy-db',
         'USER': 'mac',
         'PASSWORD': 'Giove2578!',
-        'HOST': 'database',  # Use the service name defined in docker-compose.yml
+        'HOST': 'database',
         'PORT': 5432,
     }
 }
@@ -110,7 +110,7 @@ AUTH_PASSWORD_VALIDATORS = [
 
 LANGUAGE_CODE = 'en-us'
 
-TIME_ZONE = 'UTC'
+TIME_ZONE = 'Europe/Rome'
 
 USE_I18N = True
 

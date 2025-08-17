@@ -22,7 +22,6 @@ Reads DLMS registers for a given device.
 """
 def read_dlms_values(device):
 
-
     mapped_values = {}
     gateway_ip = device.Gateway.ip_address
     gateway_port = device.port
@@ -81,7 +80,7 @@ def read_modbus_registers(device, client):
         start_address = int(device.start_address, 16)
         logger.info(f"Start Address: {start_address}")
         bytes_count = device.bytes_count 
-        logger.info(f"Start Address: {bytes_count }")
+        logger.info(f"Bytes count: {bytes_count }")
         
         # Split reads into chunks of MAX_WORDS_PER_READ
         base_values = {}
@@ -369,8 +368,8 @@ def store_data_in_database(device, data):
 
                         # Converti entrambi i timestamp a datetime
                         if last_ts and current_ts:
-                            last_time = datetime.fromisoformat(last_ts).strftime("%H:%M")
-                            current_time = datetime.fromisoformat(current_ts).strftime("%H:%M")
+                            last_time = datetime.fromisoformat(last_ts).replace(second=0, microsecond=0)
+                            current_time = datetime.fromisoformat(current_ts).replace(second=0, microsecond=0)
 
                             if last_time == current_time:
                                 logger.info(f"Skipped {key}: already stored at {current_time}")

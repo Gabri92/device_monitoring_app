@@ -6,7 +6,7 @@ from django.shortcuts import render, get_object_or_404
 from .models import Device, Button, Gateway, ComputedVariable, ModbusMappingVariable, DlmsMappingVariable, DeviceData
 from django.shortcuts import redirect
 from .commands import set_pin_status
-from user_devices.helper_funcs import sanitize_variable_name
+from user_devices.helper_funcs import sanitize_variable_name, convert_to_local_time
 import json
 import logging 
 from datetime import datetime
@@ -71,13 +71,13 @@ def home_view(request):
                 try:
                     timestamp = datetime.fromisoformat(timestamp_raw)
                 except Exception:
-                    timestamp = last_data.timestamp
+                    timestamp = convert_to_local_time(last_data.timestamp)
             elif isinstance(raw, dict) and "value" in raw:
                 value = raw["value"]
-                timestamp = last_data.timestamp
+                timestamp = convert_to_local_time(last_data.timestamp)
             else:
                 value = raw
-                timestamp = last_data.timestamp
+                timestamp = convert_to_local_time(last_data.timestamp)
 
             try:
                 value = float(value) * float(var.conversion_factor)
@@ -112,7 +112,7 @@ def home_view(request):
                 'value': val,
                 'unit': 'kWh',
                 'conversion_factor': '1',
-                'timestamp': last_data.timestamp,
+                'timestamp': convert_to_local_time(last_data.timestamp),
             })
 
         if device.show_energy and 'Energy' in energy_data:
@@ -206,8 +206,6 @@ def device_detail_view(request, device_name):
 
     if y_variable:
         
-        # Example: Generate dummy time-series data for demonstration
-        
         chart_data = DeviceData.objects.filter(device_name=device).order_by('-timestamp')[:20][::-1]
         
         sanitized_name = sanitize_variable_name(y_variable.var_name)
@@ -217,8 +215,11 @@ def device_detail_view(request, device_name):
                 for entry in chart_data
                 if entry.data.get(sanitized_name, {}).get("timestamp")  # evita None
             ]      
-        elif device.protocol == "modubs":
-            timestamps = [entry.timestamp.strftime("%Y-%m-%d %H:%M:%S") for entry in chart_data]    
+        elif device.protocol == "modbus":  # Corretto da "modubs" a "modbus"
+            timestamps = [
+                convert_to_local_time(entry.timestamp).strftime("%Y-%m-%d %H:%M")  # Formato consistente con DLMS
+                for entry in chart_data
+            ]  
         x_data = timestamps  # Example X values
         y_data = [entry.data.get(sanitized_name, {}).get("value", None) for entry in chart_data]
 

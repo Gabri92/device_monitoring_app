@@ -1,6 +1,8 @@
 from fractions import Fraction
 from datetime import datetime, timedelta
 import logging as logger
+from django.utils import timezone
+import pytz
 
 # Helper to sanitize variable names
 def sanitize_variable_name(name):
@@ -19,3 +21,10 @@ def convert_value(raw_value, conversion_factor):
         conversion_factor = 0.0
     logger.info(f"Conversion factor: {conversion_factor}")
     return raw_value * conversion_factor
+
+def convert_to_local_time(utc_dt):
+    if timezone.is_aware(utc_dt):  # Se il datetime è già timezone-aware
+        return timezone.localtime(utc_dt)
+    else:  # Se il datetime è naive, assumiamo che sia UTC
+        utc_dt = pytz.utc.localize(utc_dt)
+        return timezone.localtime(utc_dt)

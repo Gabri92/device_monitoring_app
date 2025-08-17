@@ -8,3 +8,4 @@ coverage
 pytest
 django-admin-sortable2
 requests
+pytz
