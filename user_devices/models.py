@@ -22,6 +22,7 @@ class Device(models.Model):
     start_address = models.CharField(default = 0, help_text="Starting Modbus address in hexadecimal (e.g., 0x0280)", null=True, blank=True)
     bytes_count = models.PositiveIntegerField(default=1, help_text="Total number of consecutive bytes to read", null=True, blank=True)
     port = models.IntegerField(default=0)
+    is_device_active = models.BooleanField(default = False, help_text="Does the device also produce energy?")
     show_energy = models.BooleanField(default=False, help_text="Show real time energy production/consumption")
     show_energy_daily = models.BooleanField(default=False, help_text="Show daily energy production/consumption")
     show_energy_weekly = models.BooleanField(default=False, help_text="Show weekly energy production/consumption")

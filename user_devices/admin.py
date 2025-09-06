@@ -68,7 +68,7 @@ class DeviceAdmin(SortableAdminBase, admin.ModelAdmin):
             'fields': ( 'is_enabled', 'name', 'Gateway', 'protocol', 'slave_id','register_type', 'start_address', 'bytes_count', 'port')
         }),
         ('Energy Display Options', {
-            'fields': ('show_energy','show_energy_daily', 'show_energy_weekly', 'show_energy_monthly'),
+            'fields': ('is_device_active','show_energy','show_energy_daily', 'show_energy_weekly', 'show_energy_monthly'),
         }),
     )
     

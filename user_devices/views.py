@@ -121,16 +121,22 @@ def home_view(request):
         if device.show_energy_daily:
             for key, val in energy_data.items():
                 if key.startswith('Energy_daily'):
+                    if not device.is_device_active and key.endswith('produced'):
+                        continue
                     add_energy_row(key, val)
 
         if device.show_energy_weekly:
             for key, val in energy_data.items():
                 if key.startswith('Energy_weekly'):
+                    if not device.is_device_active and key.endswith('produced'):
+                        continue                    
                     add_energy_row(key, val)
 
         if device.show_energy_monthly:
             for key, val in energy_data.items():
                 if key.startswith('Energy_monthly'):
+                    if not device.is_device_active and key.endswith('produced'):
+                        continue
                     add_energy_row(key, val)
 
 
@@ -182,19 +188,23 @@ def device_detail_view(request, device_name):
                 
             # Include basic energy metrics
             if key in ['Energy', 'Energy_produced', 'Energy_consumed']:
+                if key.endswith('produced') and not device.is_device_active:
+                    continue
                 filtered_data[key] = val
                 continue
                 
             # Filter daily/weekly/monthly based on settings
-            if key == 'Energy' and device.show_energy:
-                filtered_data[key] = val
-            elif key in ['Energy_produced', 'Energy_consumed'] and device.show_energy:
-                filtered_data[key] = val
             elif device.show_energy_daily and key.startswith('Energy_daily'):
+                if key.endswith('produced') and not device.is_device_active:
+                    continue
                 filtered_data[key] = val
             elif device.show_energy_weekly and key.startswith('Energy_weekly'):
+                if key.endswith('produced') and not device.is_device_active:
+                    continue
                 filtered_data[key] = val
             elif device.show_energy_monthly and key.startswith('Energy_monthly'):
+                if key.endswith('produced') and not device.is_device_active:
+                    continue
                 filtered_data[key] = val
                 
         context["data"] = {"data": filtered_data}
