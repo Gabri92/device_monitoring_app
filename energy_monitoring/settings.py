@@ -56,7 +56,7 @@ ROOT_URLCONF = 'energy_monitoring.urls'
 TEMPLATES = [
     {
         'BACKEND': 'django.template.backends.django.DjangoTemplates',
-        'DIRS': [],  # Keep this empty for app-level templates
+        'DIRS': [BASE_DIR / 'templates'],  # Add templates directory
         'APP_DIRS': True,  # This allows Django to find templates in app directories
         'OPTIONS': {
             'context_processors': [

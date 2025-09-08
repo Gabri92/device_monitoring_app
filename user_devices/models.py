@@ -122,6 +122,16 @@ class DeviceData(models.Model):
     def __str__(self):
         return f"{self.device_name} - {self.timestamp}"
 
+class EnergyData(models.Model):
+    user = models.ManyToManyField(User, related_name='user_energy_data')
+    Gateway = models.ForeignKey(Gateway, on_delete=models.CASCADE, related_name='gateway_energy_data')
+    device_name = models.ForeignKey(Device, on_delete=models.CASCADE, related_name='energy_data')
+    data = models.JSONField()
+    timestamp = models.DateTimeField(auto_now_add=True)
+
+    def __str__(self):
+        return f"{self.device_name} - Energy - {self.timestamp}"
+
 class Button(models.Model):
     Gateway = models.ForeignKey(Gateway, null=True, on_delete=models.CASCADE, related_name='buttons')
     label = models.CharField(max_length=100)  # Button name

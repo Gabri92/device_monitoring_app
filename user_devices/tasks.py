@@ -2,11 +2,11 @@ import logging
 
 import time
 from celery import shared_task, group
-from .models import Device, Gateway, DeviceData
+from .models import Device, Gateway, DeviceData, EnergyData
 from pymodbus.client import ModbusTcpClient
 from redis import Redis 
 from redis.lock import Lock
-from .functions import read_modbus_registers, map_variables, read_dlms_values, compute_variables, compute_energy, store_data_in_database
+from .functions import read_modbus_registers, map_variables, read_dlms_values, compute_variables, compute_energy, store_data_in_database, store_energy_data_in_database
 
 logger = logging.getLogger(__name__)
 
@@ -74,13 +74,19 @@ def scan_and_read_devices(gateway_ip):
                         
                         if values is not None:
                             # Step 5: Compute energy
-                            device_data = DeviceData.objects.filter(device_name__name=device.name)
-                            energy_values = compute_energy(values, device_data)
-                            values.update(energy_values)
+                            logger.info(f"Computing energy for device {device.name}")
+                            device_data = DeviceData.objects.filter(device_name=device)
+                            energy_data = EnergyData.objects.filter(device_name=device)
+                            energy_values = compute_energy(values, device_data, energy_data)
 
                             # Step 6: Store in DB
                             store_data_in_database(device, values)
                             logger.info(f"Data saved for device {device.name}")
+
+                            # Step 7: Store energy data in DB separately
+                            if energy_values is not None:
+                                store_energy_data_in_database(device, energy_values)
+                                logger.info(f"Energy data saved for device {device.name}")
 
                     except Exception as e:
                         logger.error(f"Error while reading values for device {device.name}: {e}")
@@ -96,6 +102,6 @@ def check_all_devices():
     logger.info("Checking all devices...")
     gateways = Gateway.objects.all()
     gateway_ip = [gateway.ip_address for gateway in gateways]
-# Create a group of tasks for checking each device
+    # Create a group of tasks for checking each device
     job = group(scan_and_read_devices.s(ip_address) for ip_address in gateway_ip)
     job.apply_async()

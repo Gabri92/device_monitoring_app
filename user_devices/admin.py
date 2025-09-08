@@ -1,5 +1,5 @@
 from django.contrib import admin
-from .models import User, Gateway, Device, DeviceVariable, ModbusMappingVariable, DlmsMappingVariable, ComputedVariable, Button, DeviceData
+from .models import User, Gateway, Device, DeviceVariable, ModbusMappingVariable, DlmsMappingVariable, ComputedVariable, Button, DeviceData, EnergyData
 from .commands import set_pin_status
 from django.utils.html import format_html
 from django.urls import reverse
@@ -27,6 +27,10 @@ class GatewayAdmin(admin.ModelAdmin):
                 # Also sync users to device data
                 for data in device.device_data.all():
                     data.user.add(user)
+                
+                # Also sync users to energy data
+                for energy_data in device.energy_data.all():
+                    energy_data.user.add(user)
 
 class MemoryMappingInlineModbus(SortableStackedInline, admin.StackedInline):
     model = ModbusMappingVariable
@@ -106,6 +110,21 @@ class DeviceDataAdmin(admin.ModelAdmin):
         return ", ".join([user.username for user in obj.user.all()])
     get_users.short_description = 'Users'
 
+class EnergyDataAdmin(admin.ModelAdmin):
+    list_display = ('device_name', 'timestamp','get_users', 'Gateway__ip_address')
+    search_fields = ('user__username', 'Gateway__ip_address', 'device_name__name')
+    list_filter = ('Gateway__ip_address', 'device_name', 'timestamp')
+    readonly_fields = ('get_users', 'device_name', 'Gateway', 'timestamp','data')
+    fieldsets = (
+        (None, {'fields': ('get_users', 'Gateway', 'device_name', 'data')}),
+        ('Timestamps', {'fields': ('timestamp',)}),
+    )
+
+    def get_users(self, obj):
+        return ", ".join([user.username for user in obj.user.all()])
+    get_users.short_description = 'Users'
+
+
 class ButtonAdmin(admin.ModelAdmin):
     list_display = ('label','Gateway__name', 'Gateway__ip_address', 'pin_number', 'is_active', 'show_in_user_page', 'toggle_button_link')
     list_filter = ('Gateway', 'show_in_user_page')
@@ -169,8 +188,15 @@ class ButtonAdmin(admin.ModelAdmin):
         from django.shortcuts import redirect
         return redirect('admin:user_devices_button_changelist')
     
+# Register models in logical groups for better visual organization
+
+# Device Settings Group
 admin.site.register(Gateway, GatewayAdmin)
 admin.site.register(Device, DeviceAdmin)
-admin.site.register(DeviceData, DeviceDataAdmin)    
 admin.site.register(Button, ButtonAdmin)
+
+# Data Management Group 
+admin.site.register(DeviceData, DeviceDataAdmin)
+admin.site.register(EnergyData, EnergyDataAdmin)
+
 admin.site.site_header = 'Site Administration'
