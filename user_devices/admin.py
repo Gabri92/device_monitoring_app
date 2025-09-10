@@ -55,7 +55,7 @@ class MemoryMappingInlineDlms(SortableStackedInline, admin.StackedInline):
 class ComputedVariableInline(SortableStackedInline, admin.StackedInline):
     model = ComputedVariable
     extra = 0
-    fields = ('var_name', 'unit', 'formula','show_on_graph')
+    fields = ('var_name', 'unit', 'formula','show_on_graph', 'show_in_homepage')
     sortable = 'order'
     
 class DeviceAdmin(SortableAdminBase, admin.ModelAdmin):

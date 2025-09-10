@@ -8,6 +8,14 @@ import pytz
 def sanitize_variable_name(name):
     return name.replace("-", "_").replace(" ", "_")
 
+# Helper to round float values to 2 decimal places
+def round_to_2_decimals(value):
+    """Round a numeric value to 2 decimal places"""
+    try:
+        return round(float(value), 2)
+    except (ValueError, TypeError):
+        return 0.0
+
 # Helper to convert raw value to float
 def convert_value(raw_value, conversion_factor):
     try:
@@ -20,7 +28,8 @@ def convert_value(raw_value, conversion_factor):
         logger.warning(f"Invalid conversion factor: {conversion_factor}. Defaulting to 0.")
         conversion_factor = 0.0
     logger.info(f"Conversion factor: {conversion_factor}")
-    return raw_value * conversion_factor
+    result = raw_value * conversion_factor
+    return round_to_2_decimals(result)
 
 def convert_to_local_time(utc_dt):
     if timezone.is_aware(utc_dt):  # Se il datetime è già timezone-aware
