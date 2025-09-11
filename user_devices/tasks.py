@@ -52,6 +52,7 @@ def scan_and_read_devices(gateway_ip):
                         # Step 1a: Read raw Modbus registers
                         base_values = read_modbus_registers(device, client)
                         logger.info(f"Values read: {base_values}")
+
                         # Step 2a: Map raw values
                         mapped_values = map_variables(base_values, device)
                         logger.info(f"Values mapped: {mapped_values}")
@@ -73,6 +74,7 @@ def scan_and_read_devices(gateway_ip):
                         continue
                     
                     if values is not None:
+                        
                         # Step 5: Compute energy
                         logger.info(f"Computing energy for device {device.name}")
                         device_data = DeviceData.objects.filter(device_name=device)

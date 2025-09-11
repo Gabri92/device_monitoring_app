@@ -31,28 +31,52 @@ def read_dlms_values(device):
     ############################################################
     # MODIFICA TEMPORANEA PER LEGGERE DATI DAL CLIENTE ATTUALE #
     ############################################################
+    # Aggregate the mappings with the same obis_code
+    aggregated_mappings = {}
     for mapping in dlms_mappings:
+        if mapping.obis_code in aggregated_mappings:
+            aggregated_mappings[mapping.obis_code].append(mapping)
+        else:
+            aggregated_mappings[mapping.obis_code] = [mapping]
+    logger.info(f"Aggregated mappings: {aggregated_mappings}")
+    
+    for obis in aggregated_mappings:
         try:
-            response = requests.get(f"http://{gateway_ip}:{gateway_port}/dlms/profile?obis_code={mapping.obis_code}&column={mapping.column_idx}")
+
+            # Aggregate the column_idx for the same obis_code
+            rest_api_call = f"http://{gateway_ip}:{gateway_port}/dlms/profile"
+            params = {"obis_code": obis}
+            payload = []
+            for mapping in aggregated_mappings[obis]:
+                payload.append({
+                    "varname": mapping.var_name,
+                    "column": mapping.column_idx,
+                    "conversion_factor": mapping.conversion_factor,
+                    "unit": mapping.unit
+                })          
+            logger.info(f"Rest API call: {rest_api_call}")
+            logger.info(f"Payload: {payload}")
+            logger.info(f"Params: {params}")
+            response = requests.post(rest_api_call, params=params, json=payload)
+            logger.info(f"Response: {response.json()}")
+
             if response.ok:
                 data = response.json()
-                logger.info(data)
+                logger.info(f"Data: {data}")
 
-                reading = data['value']        
-                last_reading_time = data['time_of_reading']
+                # Aggregate the values and the timestamps for each column_idx
+                reading = []
+                mapped_values = {}
+                for reading in data['results']:
+                    sanitized_name = sanitize_variable_name(reading['varname'])
+                    mapped_values[sanitized_name] = {
+                        "value": reading['value'],
+                        "unit": reading['unit']
+                    }
+                mapped_values['timestamp'] = data['timestamp']
 
-                # Store the value with the variable name as key
-                converted_value = convert_value(reading, mapping.conversion_factor)
-
-                sanitized_name = sanitize_variable_name(mapping.var_name)
-                
-                mapped_values[sanitized_name] = {
-                    "value": converted_value,
-                    "unit": mapping.unit,
-                    "timestamp": last_reading_time
-                }
-                logger.info(f"Read DLMS value for {sanitized_name} (OBIS: {mapping.obis_code}): {converted_value} {mapping.unit}")
                 logger.info(f"Mapped values: {mapped_values}")
+                logger.info(f"Last reading time: {mapped_values['timestamp']}")
             else:
                 logger.error(f"Failed to get profile data: {response.status_code}")
                 return None
@@ -251,17 +275,8 @@ def compute_energy(variables, device_data, energy_data):
                     break
 
         # Get timestamp of the dlms reading of the power variable
-        if is_single_power_variable:
-            timestamp = variables.get(power_name, {}).get('timestamp', None)
+            timestamp = variables.get('timestamp', None)
             if not timestamp:
-                logger.info(f"No timestamp found in variables")
-                return None
-        else:
-            if power_prod_variable_name:
-                timestamp = variables.get(power_prod_variable_name, {}).get('timestamp', None)
-            elif power_cons_variable_name:
-                timestamp = variables.get(power_cons_variable_name, {}).get('timestamp', None)
-            else:
                 logger.info(f"No timestamp found in variables")
                 return None
 
@@ -559,18 +574,16 @@ def is_device_data_already_stored(device, data):
 
             if latest_entry:
                 existing_data = latest_entry.data
-                for key in data:
-                    if key in existing_data:
-                        last_ts = existing_data[key].get("timestamp")
-                        current_ts = data[key].get("timestamp")
+                last_ts = existing_data.get("timestamp")
+                current_ts = data.get("timestamp")
 
-                        if last_ts and current_ts:
-                            last_time = datetime.fromisoformat(last_ts).replace(second=0, microsecond=0)
-                            current_time = datetime.fromisoformat(current_ts).replace(second=0, microsecond=0) 
-
-                            if last_time == current_time:
-                                logger.info(f"Skipped {key}: already stored at {current_time}")
-                                return True
+                if last_ts and current_ts:
+                    last_time = datetime.fromisoformat(last_ts).replace(second=0, microsecond=0)
+                    current_time = datetime.fromisoformat(current_ts).replace(second=0, microsecond=0)
+                    
+                    if last_time == current_time:
+                        logger.info(f"Skipped {key}: already stored at {current_time}")
+                        return True
         return False
     except Exception as e:
         logger.info(f"Error while checking the device data: {e}")
