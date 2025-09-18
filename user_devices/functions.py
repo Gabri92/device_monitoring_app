@@ -70,7 +70,7 @@ def read_dlms_values(device):
                 for reading in data['results']:
                     sanitized_name = sanitize_variable_name(reading['varname'])
                     mapped_values[sanitized_name] = {
-                        "value": reading['value'],
+                        "value": round_to_2_decimals(reading['value']),
                         "unit": reading['unit']
                     }
                 mapped_values['timestamp'] = data['timestamp']
@@ -167,7 +167,7 @@ def map_variables(base_values, device):
             # Salvo il valore nel dizionario
             sanitized_name = sanitize_variable_name(mapping.var_name)
             mapped_values[sanitized_name] = {
-                "value": converted_value,
+                "value": round_to_2_decimals(converted_value),
                 "unit": mapping.unit 
             }
 

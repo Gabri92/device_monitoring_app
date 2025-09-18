@@ -74,7 +74,7 @@ def scan_and_read_devices(gateway_ip):
                         continue
                     
                     if values is not None:
-                        
+
                         # Step 5: Compute energy
                         logger.info(f"Computing energy for device {device.name}")
                         device_data = DeviceData.objects.filter(device_name=device)

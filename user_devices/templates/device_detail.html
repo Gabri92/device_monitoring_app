@@ -121,7 +121,7 @@
             <h2>Counters</h2>
             {% if data %}
             <div class="counter-list">
-                {% for key, val in data.data.items %}
+                {% for key, val in data.items %}
                 <div class="counter-item">
                     <span class="counter-name">{{ key|display_varname }}:</span>
                     <span class="counter-value">{{ val.value|floatformat:2 }}</span>

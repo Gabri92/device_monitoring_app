@@ -3,7 +3,7 @@ from django.contrib import messages
 from django.contrib.auth import authenticate, login, logout
 from django.shortcuts import render
 from django.shortcuts import render, get_object_or_404
-from .models import Device, Button, Gateway, ComputedVariable, ModbusMappingVariable, DlmsMappingVariable, DeviceData
+from .models import Device, Button, Gateway, ComputedVariable, ModbusMappingVariable, DlmsMappingVariable, DeviceData, EnergyData
 from django.shortcuts import redirect
 from .commands import set_pin_status
 from user_devices.helper_funcs import sanitize_variable_name, convert_to_local_time
@@ -79,11 +79,6 @@ def home_view(request):
                 value = raw
                 timestamp = convert_to_local_time(last_data.timestamp)
 
-            try:
-                value = float(value) * float(var.conversion_factor)
-            except Exception:
-                pass  # fallback se non numerico
-
             var_rows.append({
                 'device_name': var.device.name,
                 'var_name': var.var_name,
@@ -95,7 +90,7 @@ def home_view(request):
 
     # Energy data
     for device in devices:
-        last_data = DeviceData.objects.filter(device_name=device).order_by('-timestamp').first()
+        last_data = EnergyData.objects.filter(device_name=device).order_by('-timestamp').first()
         if not last_data:
             continue
         energy_data = last_data.data
@@ -108,10 +103,10 @@ def home_view(request):
                 val = value
             var_rows.append({
                 'device_name': device.name,
-                'var_name': name,
+                'var_name': name.replace("_"," "),
                 'value': val,
                 'unit': 'kWh',
-                'conversion_factor': '1',
+                'conversion_factor': '',
                 'timestamp': convert_to_local_time(last_data.timestamp),
             })
 
@@ -120,23 +115,18 @@ def home_view(request):
 
         if device.show_energy_daily:
             for key, val in energy_data.items():
+                logger.info(f"Energy daily: {key} - {val}")
                 if key.startswith('Energy_daily'):
-                    if not device.is_device_active and key.endswith('produced'):
-                        continue
                     add_energy_row(key, val)
 
         if device.show_energy_weekly:
             for key, val in energy_data.items():
-                if key.startswith('Energy_weekly'):
-                    if not device.is_device_active and key.endswith('produced'):
-                        continue                    
+                if key.startswith('Energy_weekly'):                 
                     add_energy_row(key, val)
 
         if device.show_energy_monthly:
             for key, val in energy_data.items():
                 if key.startswith('Energy_monthly'):
-                    if not device.is_device_active and key.endswith('produced'):
-                        continue
                     add_energy_row(key, val)
 
 
@@ -171,43 +161,29 @@ def device_detail_view(request, device_name):
         "x_data": [],
         "y_data": [],
         "chart_error": "No data configure for this device yet.",
-        "data": None
+        "data": {}
     }
 
-
     # Retrieve last data from the device
-    counter_data = DeviceData.objects.filter(device_name=device).order_by('-timestamp').first()
-    if counter_data:
-        # Create a filtered copy of the data with only selected energy metrics
-        filtered_data = {}
-        for key, val in counter_data.data.items():
-            # Always include non-energy data
-            if not key.startswith('Energy'):
-                filtered_data[key] = val
-                continue
-                
-            # Include basic energy metrics
-            if key in ['Energy', 'Energy_produced', 'Energy_consumed']:
-                if key.endswith('produced') and not device.is_device_active:
-                    continue
-                filtered_data[key] = val
-                continue
-                
-            # Filter daily/weekly/monthly based on settings
-            elif device.show_energy_daily and key.startswith('Energy_daily'):
-                if key.endswith('produced') and not device.is_device_active:
-                    continue
-                filtered_data[key] = val
-            elif device.show_energy_weekly and key.startswith('Energy_weekly'):
-                if key.endswith('produced') and not device.is_device_active:
-                    continue
-                filtered_data[key] = val
-            elif device.show_energy_monthly and key.startswith('Energy_monthly'):
-                if key.endswith('produced') and not device.is_device_active:
-                    continue
-                filtered_data[key] = val
-                
-        context["data"] = {"data": filtered_data}
+    energy_data = EnergyData.objects.filter(device_name=device).order_by('-timestamp').first()
+    device_data = DeviceData.objects.filter(device_name=device).order_by('-timestamp').first()
+    
+    # Only process energy_data if it exists
+    if energy_data:
+        for key, value in energy_data.data.items():
+            
+            if key == "Energy_daily_produced":
+                context["data"]["Energy_daily_produced"] = value
+            if key == "Energy_daily_consumed":
+                context["data"]["Energy_daily_consumed"] = value
+            if not key.startswith("Energy") and key != "timestamp":
+                context["data"][key] = value
+
+    # Only process device_data if it exists
+    if device_data:
+        for key, value in device_data.data.items():
+            if not key == "timestamp":
+                context["data"][key] = value
 
     # Retrieve historic data for chart
     y_variable = ComputedVariable.objects.filter(device=device, show_on_graph=True).first() or \
@@ -215,29 +191,102 @@ def device_detail_view(request, device_name):
     DlmsMappingVariable.objects.filter(device=device, show_on_graph=True).first()
 
     if y_variable:
+        logger.info(f"y_variable found: {y_variable}")
+        logger.info(f"y_variable name: {y_variable.var_name}")
+        logger.info(f"Device protocol: {device.protocol}")
+
+        # Get data from last 24 hours
+        from datetime import timedelta
+        from django.utils import timezone
         
-        chart_data = DeviceData.objects.filter(device_name=device).order_by('-timestamp')[:20][::-1]
+        # Use timezone-aware datetime
+        now = timezone.now()
+        twenty_four_hours_ago = now - timedelta(hours=24)
+        
+        # First, let's check if there's any data at all for this device
+        all_data_count = DeviceData.objects.filter(device_name=device).count()
+        logger.info(f"Total data records for device {device.name}: {all_data_count}")
+        
+        if all_data_count > 0:
+            # Show the latest timestamp
+            latest_data = DeviceData.objects.filter(device_name=device).order_by('-timestamp').first()
+            logger.info(f"Latest data timestamp: {latest_data.timestamp}")
+            logger.info(f"Current time: {now}")
+            logger.info(f"24 hours ago: {twenty_four_hours_ago}")
+        
+        chart_data = DeviceData.objects.filter(
+            device_name=device, 
+            timestamp__gte=twenty_four_hours_ago
+        ).order_by('timestamp')
+        logger.info(f"Chart data count: {len(chart_data)} (from {twenty_four_hours_ago} to {now})")
+        
+        # If no data in last 24 hours, get the most recent data available
+        if len(chart_data) == 0 and all_data_count > 0:
+            logger.info("No data in last 24 hours, getting most recent data available")
+            chart_data = DeviceData.objects.filter(device_name=device).order_by('-timestamp')[:50][::-1]
+            logger.info(f"Fallback chart data count: {len(chart_data)}")
+        
+        if chart_data:
+            logger.info(f"First chart data entry: {chart_data[0].data}")
+            # Convert to list to safely access last element
+            chart_data_list = list(chart_data)
+            if chart_data_list:
+                logger.info(f"Last chart data entry: {chart_data_list[-1].data}")
+            # Reassign the list for further processing
+            chart_data = chart_data_list
         
         sanitized_name = sanitize_variable_name(y_variable.var_name)
+        logger.info(f"Sanitized variable name: {sanitized_name}")
+        
         if device.protocol == "dlms":
-            timestamps = [
-                datetime.fromisoformat(entry.data.get(sanitized_name, {}).get("timestamp", "")).strftime("%Y:%m:%d %H:%M")
-                for entry in chart_data
-                if entry.data.get(sanitized_name, {}).get("timestamp")  # evita None
-            ]      
+            timestamps = []
+            for entry in chart_data:
+                # For DLMS, timestamp is at root level, not inside the variable
+                timestamp_str = entry.data.get("timestamp", "")
+                if timestamp_str:
+                    try:
+                        timestamp = datetime.fromisoformat(timestamp_str).strftime("%Y-%m-%d %H:%M")
+                        timestamps.append(timestamp)
+                    except Exception as e:
+                        logger.info(f"Error parsing timestamp '{timestamp_str}': {e}")
+                        # Fallback to entry timestamp
+                        timestamp = convert_to_local_time(entry.timestamp).strftime("%Y-%m-%d %H:%M")
+                        timestamps.append(timestamp)
+                else:
+                    # Fallback to entry timestamp if no timestamp in data
+                    timestamp = convert_to_local_time(entry.timestamp).strftime("%Y-%m-%d %H:%M")
+                    timestamps.append(timestamp)      
         elif device.protocol == "modbus":  # Corretto da "modubs" a "modbus"
             timestamps = [
                 convert_to_local_time(entry.timestamp).strftime("%Y-%m-%d %H:%M")  # Formato consistente con DLMS
                 for entry in chart_data
             ]  
+        else:
+            timestamps = []
+            logger.info(f"Unknown protocol: {device.protocol}")
+            
         x_data = timestamps  # Example X values
         y_data = [entry.data.get(sanitized_name, {}).get("value", None) for entry in chart_data]
+        
+        logger.info(f"X data length: {len(x_data)}")
+        logger.info(f"Y data length: {len(y_data)}")
+        logger.info(f"X data sample: {x_data[:3] if x_data else 'Empty'}")
+        logger.info(f"Y data sample: {y_data[:3] if y_data else 'Empty'}")
+        
+        # Debug: show what we're extracting for Y data
+        logger.info("Y data extraction details:")
+        for i, entry in enumerate(chart_data):
+            var_data = entry.data.get(sanitized_name, {})
+            value = var_data.get("value", None) if isinstance(var_data, dict) else None
+            logger.info(f"  Entry {i}: {sanitized_name} = {value} (from {var_data})")
 
         # Assume you have logic to generate x_data and y_data
         context["x_data"] = json.dumps(x_data)
         context["y_data"] = json.dumps(y_data)
         context["y_label"] = y_variable.var_name
         context["chart_error"] = None  # Clear the error
+    else:
+        logger.info("No y_variable found for chart")
 
     return render(request, 'device_detail.html', context)
 
