@@ -4,7 +4,7 @@ from django.contrib.auth import authenticate, login, logout
 from django.shortcuts import render
 from django.shortcuts import render, get_object_or_404
 from django.db.models import Avg
-from .models import Device, Button, Gateway, ComputedVariable, ModbusMappingVariable, DlmsMappingVariable, DeviceData, EnergyData
+from .models import Device, Button, Gateway, ComputedVariable, ModbusMappingVariable, DlmsMappingVariable, DeviceData, EnergyData, GatewayData
 from django.shortcuts import redirect
 from .commands import set_pin_status
 from user_devices.helper_funcs import sanitize_variable_name, convert_to_local_time
@@ -67,50 +67,20 @@ def home_view(request):
     
     # Show gateway production and consumption data
     for gateway in gateways:
+        last_data = GatewayData.objects.filter(Gateway=gateway).order_by('-timestamp').first()
+        if last_data:
+            for key, value in last_data.data.items():
+                gateway_rows.append({
+                    'gateway_name': gateway.name,
+                    'var_name': key,
+                    'value': value.get('value', ''),
+                    'unit': value.get('unit', ''),
+                    'conversion_factor': '',
+                    'timestamp': last_data.timestamp,
+                })
+    logger.info(f"Gateway rows: {gateway_rows}")
 
-        # Plant availability
-        logger.info(f"Gateway availability: {gateway.availability}")
-        gateway_rows.append({
-            'device_name': gateway.name,
-            'var_name': 'Average Availability',
-            'value': gateway.availability,
-            'unit': '%',
-            'conversion_factor': '',
-            'timestamp': datetime.now(),
-        })
-
-        # Plant production
-        logger.info(f"Gateway production: {gateway.production}")
-        logger.info(f"Gateway consumption: {gateway.consumption}")
-        gateway_rows.append({
-            'device_name': gateway.name,
-            'var_name': 'Production',
-            'value': gateway.production,
-            'unit': 'kWh',
-            'conversion_factor': '',
-            'timestamp': datetime.now(),
-        })
-
-        # Plant consumption
-        gateway_rows.append({
-            'device_name': gateway.name,
-            'var_name': 'Consumption',
-            'value': gateway.consumption,
-            'unit': 'kWh',
-            'conversion_factor': '',
-            'timestamp': datetime.now(),
-        })
-
-        # Plant performance
-        gateway_rows.append({
-            'device_name': gateway.name,
-            'var_name': 'Performance',
-            'value': gateway.performance,
-            'unit': '%',
-            'conversion_factor': '',
-            'timestamp': datetime.now(),
-        })
-
+    # Show device data
     for var in list(modbus_vars) + list(dlms_vars) + list(computed_vars):
         last_data = DeviceData.objects.filter(device_name=var.device).order_by('-timestamp').first()
         if last_data and var.var_name in last_data.data:
@@ -182,12 +152,62 @@ def home_view(request):
                 if key.startswith('Energy_monthly'):
                     add_energy_row(key, val)
 
+    # Collect chart data for each gateway
+    gateway_chart_data = {}
+    
+    for gateway in gateways:
+        # Get GatewayData for the last 24 hours for this specific gateway
+        from datetime import timedelta
+        from django.utils import timezone
+        
+        now = timezone.now()
+        twenty_four_hours_ago = now - timedelta(hours=24)
+        
+        gateway_data = GatewayData.objects.filter(
+            Gateway=gateway,
+            timestamp__gte=twenty_four_hours_ago
+        ).order_by('timestamp')
+        
+        # Extract chart data
+        labels = []
+        production_data = []
+        consumption_data = []
+        performance_data = []
+        availability_data = []
+        radiance_data = []
+        
+        for entry in gateway_data:
+            # Format timestamp for display
+            timestamp = convert_to_local_time(entry.timestamp).strftime("%H:%M")
+            labels.append(timestamp)
+            
+            # Extract data values
+            data = entry.data
+            production_data.append(data.get('production', {}).get('value', 0))
+            performance_data.append(data.get('performance', {}).get('value', 0))
+            availability_data.append(data.get('availability', {}).get('value', 0))
+            radiance_data.append(data.get('radiance', {}).get('value', 0))
+        
+        gateway_chart_data[gateway.id] = {
+            'gateway_name': gateway.name,
+            'labels': labels,
+            'production': production_data,
+            'performance': performance_data,
+            'availability': availability_data,
+            'radiance': radiance_data,
+        }
+
+    # Convert gateway chart data to JSON for JavaScript
+    gateway_chart_data_json = json.dumps(gateway_chart_data)
+
     return render(request, 'home.html', {
         'user': user,
         'gateways': gateways,
         'devices': devices,
         'gateway_rows': gateway_rows,
         'device_rows': device_rows,
+        'gateway_chart_data': gateway_chart_data,
+        'gateway_chart_data_json': gateway_chart_data_json,
     })
 
 
@@ -273,12 +293,6 @@ def device_detail_view(request, device_name):
         ).order_by('timestamp')
         logger.info(f"Chart data count: {len(chart_data)} (from {twenty_four_hours_ago} to {now})")
         
-        # If no data in last 24 hours, get the most recent data available
-        if len(chart_data) == 0 and all_data_count > 0:
-            logger.info("No data in last 24 hours, getting most recent data available")
-            chart_data = DeviceData.objects.filter(device_name=device).order_by('-timestamp')[:50][::-1]
-            logger.info(f"Fallback chart data count: {len(chart_data)}")
-        
         if chart_data:
             logger.info(f"First chart data entry: {chart_data[0].data}")
             # Convert to list to safely access last element
@@ -301,7 +315,7 @@ def device_detail_view(request, device_name):
                         # Parse the timestamp and convert to local time
                         parsed_timestamp = datetime.fromisoformat(timestamp_str)
                         local_timestamp = convert_to_local_time(parsed_timestamp)
-                        timestamp = local_timestamp.strftime("%Y-%m-%d %H:%M")
+                        timestamp = local_timestamp.strftime("%H:%M")
                         timestamps.append(timestamp)
                     except Exception as e:
                         logger.info(f"Error parsing timestamp '{timestamp_str}': {e}")

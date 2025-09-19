@@ -349,6 +349,25 @@ button[type="submit"]:hover {
     }
 }
 
+/* No Data Message */
+.no-data-message {
+    text-align: center;
+    padding: 40px 20px;
+    color: #666;
+    font-style: italic;
+}
+
+.no-data-message p {
+    margin: 0;
+    font-size: 16px;
+}
+
+/* Individual chart canvas styling */
+.chart-container canvas {
+    width: 100% !important;
+    height: 100% !important;
+}
+
 @media (max-width: 480px) {
     .tab-navigation {
         max-width: 150px;

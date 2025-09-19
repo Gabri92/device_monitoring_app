@@ -109,7 +109,7 @@ def scan_and_read_devices(gateway_ip):
 @shared_task
 def compute_plant_metrics():
     """
-    Celery task to compute and store plant metrics (availability, performance, production, consumption)
+    Celery task to compute and store plant metrics (availability, performance, production, consumption, radiance)
     for all gateways. Runs every 15 minutes.
     """
     logger.info("Computing plant metrics for all gateways...")
@@ -125,21 +125,27 @@ def compute_plant_metrics():
                     logger.info(f"No devices found for gateway {gateway.ip_address}")
                     continue
                 
-                # Compute plant metrics
-                functions.compute_plant_production(gateway, devices)
-                functions.compute_plant_consumption(gateway, devices)
-                functions.compute_plant_availability(gateway, devices)
-                functions.compute_plant_performance(gateway, devices)
+                # Compute plant availability
+                availability = functions.compute_plant_availability(gateway, devices)
+
+                # Compute plant performance
+                performance = functions.compute_plant_performance(gateway, devices)
+
+                # Compute plant production
+                production = functions.compute_plant_production(gateway, devices)
                 
-                # Create new gateway data
+                # Collect radiance data from devices
+                radiance_value = functions.find_radiance_value(devices)
+
+                # Create new gateway data with value and unit, like device data
                 gateway_data = {
-                    'production': gateway.production,
-                    'consumption': gateway.consumption,
-                    'availability': gateway.availability,
-                    'performance': gateway.performance
+                    'availability': {'value': availability, 'unit': '%'},
+                    'performance': {'value': performance, 'unit': '%'},
+                    'production': {'value': production, 'unit': 'kW'},
+                    'radiance': {'value': radiance_value, 'unit': 'W/m²'}
                 }
                 functions.store_gateway_data_in_database(gateway, gateway_data)
-                logger.info(f"Plant availability, performance, production and consumption saved for gateway {gateway.ip_address}")
+                logger.info(f"Plant availability, performance, production and radiance saved for gateway {gateway.ip_address}")
                 
             except Exception as e:
                 logger.error(f"Error while computing plant metrics for gateway {gateway.ip_address}: {e}")

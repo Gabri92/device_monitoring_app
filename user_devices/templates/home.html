@@ -22,14 +22,38 @@
         </div>
     </header>
     <main class="main-content">
-        <!-- Plant Overview Section with Chart and Table -->
+        <!-- Plant Overview Section with Tabbed Charts -->
         <div class="plant-overview-section">
-            <!-- Multi-Axis Chart -->
             <section class="chart-section">
                 <h2>Performance Overview (24h)</h2>
-                <div class="chart-container">
-                    <canvas id="multiAxisChart" width="400" height="300"></canvas>
+                
+                {% if gateway_chart_data %}
+                <!-- Tab Navigation -->
+                <div class="tab-navigation">
+                    {% for gateway_id, chart_data in gateway_chart_data.items %}
+                    <button class="tab-button {% if forloop.first %}active{% endif %}" 
+                            onclick="switchTab('{{ gateway_id }}')" 
+                            data-gateway="{{ gateway_id }}">
+                        {{ chart_data.gateway_name }}
+                    </button>
+                    {% endfor %}
                 </div>
+                
+                <!-- Tab Content -->
+                <div class="tab-content-container">
+                    {% for gateway_id, chart_data in gateway_chart_data.items %}
+                    <div class="tab-content {% if forloop.first %}active{% endif %}" id="tab-{{ gateway_id }}">
+                        <div class="chart-container">
+                            <canvas id="chart-{{ gateway_id }}" width="400" height="300"></canvas>
+                        </div>
+                    </div>
+                    {% endfor %}
+                </div>
+                {% else %}
+                <div class="no-data-message">
+                    <p>No gateway data available for charts.</p>
+                </div>
+                {% endif %}
             </section>
         </div>
 
@@ -51,7 +75,7 @@
                             <tbody>
                                 {% for var in gateway_rows %}
                                     <tr>
-                                        <td>{{ var.device_name }}</td>
+                                        <td>{{ var.gateway_name }}</td>
                                         <td>{{ var.var_name }}</td>
                                         <td>{{ var.value }}</td>
                                         <td>{{ var.unit }}</td>
@@ -138,128 +162,169 @@
     <!-- Chart.js Library -->
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
     
-    <!-- Multi-Axis Chart Script -->
+    <!-- Tabbed Charts Script -->
     <script>
-        // Chart data from Django
-        const chartData = JSON.parse('{{ chart_data|escapejs }}');
+        // Gateway chart data from Django
+        const gatewayChartData = JSON.parse('{{ gateway_chart_data_json|escapejs }}');
+        const charts = {}; // Store chart instances
         
-        // Create multi-axis chart
-        const ctx = document.getElementById('multiAxisChart').getContext('2d');
-        const multiAxisChart = new Chart(ctx, {
-            type: 'line',
-            data: {
-                labels: chartData.labels,
-                datasets: [
-                    {
-                        label: 'Radiance (W/m²)',
-                        data: chartData.radiance,
-                        borderColor: 'rgb(255, 99, 132)',
-                        backgroundColor: 'rgba(255, 99, 132, 0.2)',
-                        yAxisID: 'y1',
-                        tension: 0.1
-                    },
-                    {
-                        label: 'Production (kW)',
-                        data: chartData.production,
-                        borderColor: 'rgb(54, 162, 235)',
-                        backgroundColor: 'rgba(54, 162, 235, 0.2)',
-                        yAxisID: 'y2',
-                        tension: 0.1
-                    },
-                    {
-                        label: 'Performance (%)',
-                        data: chartData.performance,
-                        borderColor: 'rgb(75, 192, 192)',
-                        backgroundColor: 'rgba(75, 192, 192, 0.2)',
-                        yAxisID: 'y3',
-                        tension: 0.1
-                    },
-                    {
-                        label: 'Availability (%)',
-                        data: chartData.availability,
-                        borderColor: 'rgb(255, 205, 86)',
-                        backgroundColor: 'rgba(255, 205, 86, 0.2)',
-                        yAxisID: 'y3',
-                        tension: 0.1
-                    }
-                ]
-            },
-            options: {
-                responsive: true,
-                maintainAspectRatio: false,
-                layout: {
-                    padding: {
-                        top: 10,
-                        bottom: 10,
-                        left: 10,
-                        right: 10
-                    }
+        // Tab switching function
+        function switchTab(gatewayId) {
+            // Hide all tab content
+            document.querySelectorAll('.tab-content').forEach(content => {
+                content.classList.remove('active');
+            });
+            
+            // Remove active class from all tab buttons
+            document.querySelectorAll('.tab-button').forEach(button => {
+                button.classList.remove('active');
+            });
+            
+            // Show selected tab content
+            document.getElementById('tab-' + gatewayId).classList.add('active');
+            
+            // Add active class to clicked button
+            document.querySelector(`[data-gateway="${gatewayId}"]`).classList.add('active');
+            
+            // Resize the chart to fit properly when switching tabs
+            if (charts[gatewayId]) {
+                charts[gatewayId].resize();
+            }
+        }
+        
+        // Function to create chart for a gateway
+        function createChart(gatewayId, data) {
+            const ctx = document.getElementById('chart-' + gatewayId).getContext('2d');
+            
+            // Destroy existing chart if it exists
+            if (charts[gatewayId]) {
+                charts[gatewayId].destroy();
+            }
+            
+            charts[gatewayId] = new Chart(ctx, {
+                type: 'line',
+                data: {
+                    labels: data.labels,
+                    datasets: [
+                        {
+                            label: 'Production (kW)',
+                            data: data.production,
+                            borderColor: 'rgb(54, 162, 235)',
+                            backgroundColor: 'rgba(54, 162, 235, 0.2)',
+                            yAxisID: 'y1',
+                            tension: 0.1
+                        },
+                        {
+                            label: 'Radiance (W/m²)',
+                            data: data.radiance,
+                            borderColor: 'rgb(255, 99, 132)',
+                            backgroundColor: 'rgba(255, 99, 132, 0.2)',
+                            yAxisID: 'y1',
+                            tension: 0.1
+                        },
+                        {
+                            label: 'Performance (%)',
+                            data: data.performance,
+                            borderColor: 'rgb(75, 192, 192)',
+                            backgroundColor: 'rgba(75, 192, 192, 0.2)',
+                            yAxisID: 'y2',
+                            tension: 0.1
+                        },
+                        {
+                            label: 'Availability (%)',
+                            data: data.availability,
+                            borderColor: 'rgb(255, 205, 86)',
+                            backgroundColor: 'rgba(255, 205, 86, 0.2)',
+                            yAxisID: 'y2',
+                            tension: 0.1
+                        }
+                    ]
                 },
-                interaction: {
-                    mode: 'index',
-                    intersect: false,
-                },
-                scales: {
-                    x: {
-                        display: true,
-                        title: {
-                            display: true,
-                            text: 'Time (24h)'
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    layout: {
+                        padding: {
+                            top: 10,
+                            bottom: 10,
+                            left: 10,
+                            right: 10
                         }
                     },
-                    y1: {
-                        type: 'linear',
-                        display: true,
-                        position: 'left',
-                        title: {
-                            display: true,
-                            text: 'Radiance (W/m²)'
-                        },
-                        max: 1400,
-                        min: 0,
-                        grid: {
-                            drawOnChartArea: false,
-                        },
+                    interaction: {
+                        mode: 'index',
+                        intersect: false,
                     },
-                    y2: {
-                        type: 'linear',
-                        display: true,
-                        position: 'right',
-                        title: {
+                    scales: {
+                        x: {
                             display: true,
-                            text: 'Production (kW)'
+                            title: {
+                                display: true,
+                                text: 'Time (24h)'
+                            }
                         },
-                        max: 500,
-                        min: 0,
-                        grid: {
-                            drawOnChartArea: false,
+                        y1: {
+                            type: 'linear',
+                            display: true,
+                            position: 'left',
+                            title: {
+                                display: true,
+                                text: 'Production (kW) / Radiance (W/m²)'
+                            },
+                            max: Math.max(500, Math.max(...data.production), Math.max(...data.radiance)),
+                            grid: {
+                                drawOnChartArea: false,
+                            }
                         },
+                        y2: {
+                            type: 'linear',
+                            display: true,
+                            position: 'right',
+                            title: {
+                                display: true,
+                                text: 'Performance/Availability (%)'
+                            },
+                            max: 100,
+                            min: 0,
+                            grid: {
+                                drawOnChartArea: false,
+                            },
+                            offset: true
+                        }
                     },
-                    y3: {
-                        type: 'linear',
-                        display: true,
-                        position: 'right',
+                    plugins: {
                         title: {
                             display: true,
-                            text: 'Performance/Availability (%)'
+                            text: data.gateway_name + ' - Performance Overview (Max: 500 kW, 1400 W/m², 100%)'
                         },
-                        max: 100,
-                        min: 0,
-                        grid: {
-                            drawOnChartArea: false,
-                        },
-                        // Offset this axis to avoid overlap
-                        offset: true
+                        legend: {
+                            display: true,
+                            position: 'top'
+                        }
                     }
-                },
-                plugins: {
-                    title: {
-                        display: true,
-                        text: 'Multi-Axis Performance Chart (100% = 500kW = 1400W/m²)'
-                    },
-                    legend: {
-                        display: true,
-                        position: 'top'
+                }
+            });
+        }
+        
+        // Initialize charts for all gateways
+        document.addEventListener('DOMContentLoaded', function() {
+            // Create chart for the first (active) tab immediately
+            const firstGatewayId = Object.keys(gatewayChartData)[0];
+            if (firstGatewayId && gatewayChartData[firstGatewayId]) {
+                createChart(firstGatewayId, gatewayChartData[firstGatewayId]);
+            }
+            
+            // Create charts for other tabs when they are first accessed
+            for (const [gatewayId, data] of Object.entries(gatewayChartData)) {
+                if (gatewayId !== firstGatewayId) {
+                    // Add click listener to create chart when tab is first clicked
+                    const tabButton = document.querySelector(`[data-gateway="${gatewayId}"]`);
+                    if (tabButton) {
+                        tabButton.addEventListener('click', function() {
+                            if (!charts[gatewayId]) {
+                                createChart(gatewayId, data);
+                            }
+                        });
                     }
                 }
             }

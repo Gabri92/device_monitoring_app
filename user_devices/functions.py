@@ -665,66 +665,62 @@ def compute_plant_availability(gateway, devices):
     try:
         sum_availability = 0
         for device in devices:
-            sum_availability += device.availability
-        gateway.availability = round_to_2_decimals(sum_availability / len(devices))
-        gateway.save()
+            if device.is_enabled:
+                sum_availability += device.availability
+        availability = round_to_2_decimals(sum_availability / len(devices))
+        return availability
     except Exception as e:
         logger.info(f"Error while computing the plant availability: {e}")
+        return 0
 
 """
 Compute plant performance as (Total daily energy produced / Radiance) * performance factor
 """
 def compute_plant_performance(gateway, devices):
-    radiance = ['Radiance', 'radiance', 'rad', 'Rad']
-    radiance_value = None
 
-    for device in devices:
-        # Get the latest device data for this device
-        latest_device_data = DeviceData.objects.filter(device_name=device).order_by('-timestamp').first()
-        
-        # Check if the device data is present
-        if latest_device_data and latest_device_data.data:
-            for key, value in latest_device_data.data.items():
-                if key in radiance:
-                    # Extract the actual radiance value from the data structure
-                    if isinstance(value, dict) and 'value' in value:
-                        radiance_value = value['value']
-                        logger.info(f"Radiance value: {radiance_value}")
-                    else:
-                        radiance_value = value
-                        logger.info(f"Radiance value: {radiance_value}")
-                    break
-
-        if radiance_value:
-            performance = ((gateway.production / radiance_value) * gateway.performance_factor) * 100
-            gateway.performance = round_to_2_decimals(performance)
-            gateway.save()
-            logger.info(f"Plant performance saved for gateway {gateway.name}: {gateway.performance}")
-            break  # Found radiance, no need to check other devices
-        else:
-            logger.info(f"No radiance value found for device {device.name}")
+    radiance_value = find_radiance_value(devices)
+    power_in = compute_plant_production(gateway, devices)
+    if radiance_value:
+        performance = round_to_2_decimals(((power_in / radiance_value) * gateway.performance_factor) * 100)
+        logger.info(f"Plant performance saved for gateway {gateway.name}: {performance}")
+        return performance
+    else:
+        logger.info(f"No radiance value found for device {device.name}")
+        return 0
 
 """
 Compute plant production as (Total daily energy produced / Radiance) * performance factor
 """
 def compute_plant_production(gateway, devices):
-    gateway.production = 0
+    # Aggregate the power in of the devices
+    power_in = 0
+    Power_in = ['Pin', 'Power Consumption', 'Potenza in entrata']
     for device in devices:
-        gateway.production += device.daily_production
-        logger.info(f"Device daily production for device {device.name}: {device.daily_production}")
-    gateway.production = round_to_2_decimals(gateway.production)
-    gateway.save()
-    logger.info(f"Plant production saved for gateway {gateway.name}: {gateway.production}")
+        if device.is_enabled:
+            latest_device_data = DeviceData.objects.filter(device_name=device).order_by('-timestamp').first()
+            if latest_device_data and latest_device_data.data:
+                for key, value in latest_device_data.data.items():
+                    if key in Power_in:
+                        if isinstance(value, dict) and 'value' in value:
+                            power_in += value['value']
+                        else:
+                            power_in += value
+    logger.info(f"Plant production saved for gateway {gateway.name}: {power_in}")
+    return power_in
 
-"""
-Compute plant consumption as (Total daily energy consumed / Radiance) * performance factor
-"""
-def compute_plant_consumption(gateway, devices):
-    gateway.consumption = 0
+
+def find_radiance_value(devices):
+    radiance = ['Radiance', 'radiance', 'rad', 'Rad']
+    radiance_value = None
     for device in devices:
-        gateway.consumption += device.daily_consumption
-        logger.info(f"Device daily consumption for device {device.name}: {device.daily_consumption}")
-    gateway.consumption = round_to_2_decimals(gateway.consumption)  
-    gateway.save()
-    logger.info(f"Plant consumption saved for gateway {gateway.name}: {gateway.consumption}")
-
+        if device.is_enabled:
+            latest_device_data = DeviceData.objects.filter(device_name=device).order_by('-timestamp').first()
+            if latest_device_data and latest_device_data.data:
+                for key, value in latest_device_data.data.items():
+                    if key in radiance:
+                        if isinstance(value, dict) and 'value' in value:
+                            radiance_value = value['value']
+                        else:
+                            radiance_value = value
+                        return radiance_value
+    return None

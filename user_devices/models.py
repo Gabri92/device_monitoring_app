@@ -9,10 +9,6 @@ class Gateway(models.Model):
     ssh_username = models.CharField(max_length=50, default='ssh_user')  # SSH username
     ssh_password = models.CharField(max_length=100, default='ssh_psw')  # SSH password
     ip_address = models.CharField(max_length=50)
-    performance = models.FloatField(default=0, help_text="Performance of the plant")
-    availability = models.FloatField(default=0, help_text="Availability of the plant")
-    production = models.FloatField(default=0, help_text="Production of the plant")
-    consumption = models.FloatField(default=0, help_text="Consumption of the plant")
     performance_factor = models.FloatField(default=0, help_text="Performance factor of the plant")
 
     class Meta:
