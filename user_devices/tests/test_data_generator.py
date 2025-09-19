@@ -49,7 +49,7 @@ def generate_test_data():
     gateway.user.add(user)
     
     # 4. Generate data for the last 48 hours with 15-minute intervals
-    now = datetime.now(timezone.utc)
+    now = datetime.now(datetime.timezone.utc)
     
     # Delete existing data for clean test
     DeviceData.objects.filter(device_name=device).delete()

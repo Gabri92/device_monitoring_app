@@ -402,7 +402,7 @@ class TestComputeEnergy(TestCase):
         
         # Mock previous data
         previous_data = Mock()
-        previous_data.timestamp = datetime.now(timezone.utc) - timedelta(minutes=5)
+        previous_data.timestamp = datetime.now(datetime.timezone.utc) - timedelta(minutes=5)
         previous_data.data = {
             'P': {'value': 1000.0, 'unit': 'W'},
             'Energy': {'value': 5000.0, 'unit': 'J'},
@@ -425,9 +425,9 @@ class TestComputeEnergy(TestCase):
         
         # Return different mocks for different filter calls
         def side_effect_filter(timestamp__gte):
-            if timestamp__gte > (datetime.now(timezone.utc) - timedelta(days=2)):
+            if timestamp__gte > (datetime.now(datetime.timezone.utc) - timedelta(days=2)):
                 return mock_daily_filter
-            elif timestamp__gte > (datetime.now(timezone.utc) - timedelta(days=8)):
+            elif timestamp__gte > (datetime.now(datetime.timezone.utc) - timedelta(days=8)):
                 return mock_weekly_filter
             else:
                 return mock_monthly_filter
@@ -478,7 +478,7 @@ class TestComputeEnergy(TestCase):
         
         # Mock previous data
         previous_data = Mock()
-        previous_data.timestamp = datetime.now(timezone.utc) - timedelta(minutes=5)
+        previous_data.timestamp = datetime.now(datetime.timezone.utc) - timedelta(minutes=5)
         previous_data.data = {
             'P': {'value': -500.0, 'unit': 'W'},  # Negative power
             'Energy': {'value': 5000.0, 'unit': 'J'},
@@ -519,7 +519,7 @@ class TestComputeEnergy(TestCase):
         
         # Mock previous data with "Power" instead of "P"
         previous_data = Mock()
-        previous_data.timestamp = datetime.now(timezone.utc) - timedelta(minutes=5)
+        previous_data.timestamp = datetime.now(datetime.timezone.utc) - timedelta(minutes=5)
         previous_data.data = {
             'Power': {'value': 1000.0, 'unit': 'W'},
             'Energy': {'value': 5000.0, 'unit': 'J'},

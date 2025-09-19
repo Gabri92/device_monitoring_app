@@ -2,15 +2,17 @@ import logging
 import time
 import json
 import requests
+import math
 from sympy import sympify
 from datetime import datetime, timezone, timedelta
 from pymodbus.client import ModbusTcpClient
-from .models import ModbusMappingVariable, ComputedVariable, DeviceData, EnergyData
+from .models import ModbusMappingVariable, ComputedVariable, DeviceData, EnergyData, GatewayData
 from decimal import Decimal
 from django.db.models import Sum
 from django.db.models.expressions import RawSQL
 from fractions import Fraction
 from .helper_funcs import sanitize_variable_name, convert_value, convert_to_local_time, round_to_2_decimals
+from django.conf import settings
 
 logger = logging.getLogger(__name__)
 
@@ -300,7 +302,6 @@ def compute_energy(variables, device_data, energy_data):
             previous_energy_produced = previous_data.data.get('Energy_produced', {}).get('value', 0.0)
             previous_energy_consumed = previous_data.data.get('Energy_consumed', {}).get('value', 0.0)
 
-            t           
             # Update produced/consumed based on the sign of energy increment
             # Negative power = energy produced, Positive power = energy consumed
             if average_value >= 0:
@@ -526,6 +527,34 @@ def compute_energy(variables, device_data, energy_data):
         logger.error(f"Error during computation: {e}", exc_info=True)
         return None
         
+"""
+Compute device availability
+"""
+def compute_device_availability(device, data):
+    try:
+        start_of_day_utc = datetime.now(timezone.utc).replace(hour=0, minute=0, second=0, microsecond=0)
+        start_of_day_local = convert_to_local_time(start_of_day_utc)
+        start_of_day_filter = start_of_day_local.astimezone(timezone.utc)
+        device_data = DeviceData.objects.filter(device_name=device, timestamp__gte=start_of_day_filter)
+        if device_data.count() == 0:
+            return 0
+        else:
+            # Check the theoretical number of data at this hour and minute current and convert to second in local time
+            now = datetime.now(timezone.utc) 
+            now_local = convert_to_local_time(now)
+            hour_of_day = now_local.hour * 3600 + now_local.minute * 60
+            interval = settings.CELERY_BEAT_SCHEDULE_INTERVAL if device.protocol == "modbus" else 15 * 60
+            num_of_data_expected = math.floor(hour_of_day / interval)
+            availability = round_to_2_decimals((device_data.count()/num_of_data_expected)*100)
+            logger.info(f"Actual hour of day: {now_local.hour}:{now_local.minute}")
+            logger.info(f"Availability: {availability}")
+            logger.info(f"Hour of day: {hour_of_day}")
+            logger.info(f"Num of data expected: {num_of_data_expected}")
+            logger.info(f"Num of data: {device_data.count()}")
+            return availability
+    except Exception as e:
+        logger.error(f"Error during computation: {e}", exc_info=True)
+        return 0
 
 """
 Save device data into the DeviceData model.
@@ -544,6 +573,19 @@ def store_data_in_database(device, data):
     except Exception as e:
         logger.info(f"Error while saving the data: {e}")
 
+"""
+Store Gateway data into the Database
+"""
+def store_gateway_data_in_database(gateway, data):
+    try:
+        gateway_data = GatewayData.objects.create(
+            Gateway=gateway,
+            data=data
+        )
+        if hasattr(gateway, "user"):
+            gateway_data.user.set(gateway.user.all())
+    except Exception as e:
+        logger.info(f"Error while saving the gateway data: {e}")
 
 """
 Store Energy data into the Database
@@ -582,7 +624,7 @@ def is_device_data_already_stored(device, data):
                     current_time = datetime.fromisoformat(current_ts).replace(second=0, microsecond=0)
                     
                     if last_time == current_time:
-                        logger.info(f"Skipped {key}: already stored at {current_time}")
+                        logger.info(f"Skipped: already stored at {current_time}")
                         return True
         return False
     except Exception as e:
@@ -609,9 +651,80 @@ def is_energy_data_already_stored(device, data):
                     current_time = datetime.fromisoformat(current_ts).replace(second=0, microsecond=0)
                     
                     if last_time == current_time:
-                        logger.info(f"Skipped {key}: already stored at {current_time}")
+                        logger.info(f"Skipped: already stored at {current_time}")
                         return True
         return False
     except Exception as e:
         logger.info(f"Error while checking the energy data: {e}")
         return True
+
+"""
+Compute plant availability
+"""
+def compute_plant_availability(gateway, devices):
+    try:
+        sum_availability = 0
+        for device in devices:
+            sum_availability += device.availability
+        gateway.availability = round_to_2_decimals(sum_availability / len(devices))
+        gateway.save()
+    except Exception as e:
+        logger.info(f"Error while computing the plant availability: {e}")
+
+"""
+Compute plant performance as (Total daily energy produced / Radiance) * performance factor
+"""
+def compute_plant_performance(gateway, devices):
+    radiance = ['Radiance', 'radiance', 'rad', 'Rad']
+    radiance_value = None
+
+    for device in devices:
+        # Get the latest device data for this device
+        latest_device_data = DeviceData.objects.filter(device_name=device).order_by('-timestamp').first()
+        
+        # Check if the device data is present
+        if latest_device_data and latest_device_data.data:
+            for key, value in latest_device_data.data.items():
+                if key in radiance:
+                    # Extract the actual radiance value from the data structure
+                    if isinstance(value, dict) and 'value' in value:
+                        radiance_value = value['value']
+                        logger.info(f"Radiance value: {radiance_value}")
+                    else:
+                        radiance_value = value
+                        logger.info(f"Radiance value: {radiance_value}")
+                    break
+
+        if radiance_value:
+            performance = ((gateway.production / radiance_value) * gateway.performance_factor) * 100
+            gateway.performance = round_to_2_decimals(performance)
+            gateway.save()
+            logger.info(f"Plant performance saved for gateway {gateway.name}: {gateway.performance}")
+            break  # Found radiance, no need to check other devices
+        else:
+            logger.info(f"No radiance value found for device {device.name}")
+
+"""
+Compute plant production as (Total daily energy produced / Radiance) * performance factor
+"""
+def compute_plant_production(gateway, devices):
+    gateway.production = 0
+    for device in devices:
+        gateway.production += device.daily_production
+        logger.info(f"Device daily production for device {device.name}: {device.daily_production}")
+    gateway.production = round_to_2_decimals(gateway.production)
+    gateway.save()
+    logger.info(f"Plant production saved for gateway {gateway.name}: {gateway.production}")
+
+"""
+Compute plant consumption as (Total daily energy consumed / Radiance) * performance factor
+"""
+def compute_plant_consumption(gateway, devices):
+    gateway.consumption = 0
+    for device in devices:
+        gateway.consumption += device.daily_consumption
+        logger.info(f"Device daily consumption for device {device.name}: {device.daily_consumption}")
+    gateway.consumption = round_to_2_decimals(gateway.consumption)  
+    gateway.save()
+    logger.info(f"Plant consumption saved for gateway {gateway.name}: {gateway.consumption}")
+

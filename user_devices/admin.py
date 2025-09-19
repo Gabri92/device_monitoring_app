@@ -1,5 +1,5 @@
 from django.contrib import admin
-from .models import User, Gateway, Device, DeviceVariable, ModbusMappingVariable, DlmsMappingVariable, ComputedVariable, Button, DeviceData, EnergyData
+from .models import User, Gateway, Device, DeviceVariable, ModbusMappingVariable, DlmsMappingVariable, ComputedVariable, Button, DeviceData, EnergyData, GatewayData
 from .commands import set_pin_status
 from django.utils.html import format_html
 from django.urls import reverse
@@ -11,6 +11,7 @@ class GatewayAdmin(admin.ModelAdmin):
     list_filter = ('user','ip_address')  # Filter by user and active status
     search_fields = ('user', 'ip_address')  # Search bar
     filter_horizontal = ('user',)
+    exclude = ('performance', 'availability', 'production', 'consumption')
 
     def get_users(self, obj):
         return ", ".join([user.username for user in obj.user.all()])
@@ -57,7 +58,8 @@ class ComputedVariableInline(SortableStackedInline, admin.StackedInline):
     extra = 0
     fields = ('var_name', 'unit', 'formula','show_on_graph', 'show_in_homepage')
     sortable = 'order'
-    
+
+
 class DeviceAdmin(SortableAdminBase, admin.ModelAdmin):
     form = DeviceForm
     list_display = ('name','is_enabled', 'get_users','Gateway__name', 'Gateway__ip_address', 'protocol')
@@ -95,6 +97,19 @@ class DeviceAdmin(SortableAdminBase, admin.ModelAdmin):
         queryset.update(is_x_axis=False, is_y_axis=False)
         self.message_user(request, "Axis assignments reset.")
 
+class GatewayDataAdmin(admin.ModelAdmin):
+    list_display = ('Gateway', 'timestamp','get_users')
+    search_fields = ('user__username', 'Gateway__ip_address')
+    list_filter = ('Gateway__ip_address', 'timestamp')
+    readonly_fields = ('get_users', 'Gateway', 'timestamp','data')
+    fieldsets = (
+        (None, {'fields': ('get_users', 'Gateway', 'data')}),
+        ('Timestamps', {'fields': ('timestamp',)}),
+    )
+
+    def get_users(self, obj):
+        return ", ".join([user.username for user in obj.user.all()])
+    get_users.short_description = 'Users'
 
 class DeviceDataAdmin(admin.ModelAdmin):
     list_display = ('device_name', 'timestamp','get_users', 'Gateway__ip_address')
@@ -198,5 +213,48 @@ admin.site.register(Button, ButtonAdmin)
 # Data Management Group 
 admin.site.register(DeviceData, DeviceDataAdmin)
 admin.site.register(EnergyData, EnergyDataAdmin)
+admin.site.register(GatewayData, GatewayDataAdmin)
 
 admin.site.site_header = 'Site Administration'
+
+# Custom admin configuration to control model ordering
+from django.contrib.admin import AdminSite
+from django.contrib.admin.apps import AdminConfig
+
+class CustomAdminSite(AdminSite):
+    def index(self, request, extra_context=None):
+        """
+        Override the admin index to control model ordering
+        """
+        app_dict = self._build_app_dict(request)
+        
+        # Define the desired order for models within the user_devices app
+        desired_order = [
+            'gateway',
+            'device', 
+            'button',
+            'devicedata',
+            'energydata',
+            'gatewaydata'
+        ]
+        
+        # Reorder the models in the user_devices app
+        if 'user_devices' in app_dict:
+            app_dict['user_devices']['models'].sort(
+                key=lambda x: desired_order.index(x['object_name'].lower()) 
+                if x['object_name'].lower() in desired_order 
+                else 999
+            )
+        
+        context = dict(
+            self.each_context(request),
+            title=self.index_title,
+            app_list=list(app_dict.values()),
+        )
+        context.update(extra_context or {})
+        
+        from django.shortcuts import render
+        return render(request, 'admin/index.html', context)
+
+# Replace the default admin site
+admin.site.__class__ = CustomAdminSite

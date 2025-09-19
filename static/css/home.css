@@ -40,6 +40,7 @@ main {
 .main-content {
     display: flex;
     flex-direction: column;
+    width: 100%;
 }
 
 .flex-row {
@@ -164,4 +165,201 @@ button[type="submit"]:hover {
 
 .variables-homepage tr:hover {
     background-color: #f1f1f1;
+}
+
+/* Gateway/Plant Overview Table Styling */
+.gateway-table {
+    border: 2px solid #305f84;
+}
+
+.gateway-table th {
+    background-color: #305f84;
+    color: white;
+    font-weight: bold;
+}
+
+.gateway-table tr:nth-child(even) {
+    background-color: #e8f4fd;
+}
+
+.gateway-table tr:hover {
+    background-color: #d1e7f7;
+}
+
+/* Device Readings Table Styling */
+.device-table {
+    border: 2px solid #28a745;
+}
+
+.device-table th {
+    background-color: #28a745;
+    color: white;
+    font-weight: bold;
+}
+
+.device-table tr:nth-child(even) {
+    background-color: #e8f5e8;
+}
+
+.device-table tr:hover {
+    background-color: #d4edda;
+}
+
+/* Plant Overview Section Layout */
+.plant-overview-section {
+    display: flex;
+    flex-direction: column;
+    gap: 20px;
+    margin: 20px;
+}
+
+
+.chart-section {
+    background-color: white;
+    padding: 20px;
+    border-radius: 10px;
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+}
+
+.chart-section h2 {
+    color: #305f84;
+    font-weight: bold;
+    border-bottom: 2px solid #e1e1e1;
+    padding-bottom: 10px;
+    margin-bottom: 20px;
+}
+
+.chart-container {
+    position: relative;
+    height: 400px;
+    width: 100%;
+    margin: 0;
+    padding: 0;
+}
+
+/* Chart.js specific adjustments */
+#multiAxisChart {
+    width: 100% !important;
+    height: 100% !important;
+}
+
+/* Tab Navigation Styles */
+.tab-navigation {
+    display: flex;
+    border-bottom: 2px solid #e1e1e1;
+    margin-bottom: 20px;
+    background-color: #f8f9fa;
+    border-radius: 8px 8px 0 0;
+    overflow-x: auto;
+}
+
+.tab-button {
+    background-color: transparent;
+    border: none;
+    padding: 12px 20px;
+    cursor: pointer;
+    font-size: 14px;
+    font-weight: 500;
+    color: #666;
+    border-bottom: 3px solid transparent;
+    transition: all 0.3s ease;
+    white-space: nowrap;
+    min-width: 120px;
+}
+
+.tab-button:hover {
+    background-color: #e9ecef;
+    color: #305f84;
+}
+
+.tab-button.active {
+    background-color: white;
+    color: #305f84;
+    border-bottom-color: #305f84;
+    font-weight: 600;
+}
+
+/* Tab Content Styles */
+.tab-content {
+    display: none;
+    animation: fadeIn 0.3s ease-in-out;
+}
+
+.tab-content.active {
+    display: block;
+}
+
+@keyframes fadeIn {
+    from {
+        opacity: 0;
+        transform: translateY(10px);
+    }
+    to {
+        opacity: 1;
+        transform: translateY(0);
+    }
+}
+
+/* Enhanced Chart Section */
+.chart-section {
+    background-color: white;
+    padding: 20px;
+    border-radius: 10px;
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+    border: 1px solid #e1e1e1;
+}
+
+.chart-section h2 {
+    color: #305f84;
+    font-weight: bold;
+    border-bottom: 2px solid #e1e1e1;
+    padding-bottom: 10px;
+    margin-bottom: 20px;
+    text-align: center;
+}
+
+/* Responsive design for smaller screens */
+@media (max-width: 768px) {
+    .chart-container {
+        height: 300px;
+    }
+    
+    .tab-navigation {
+        flex-direction: column;
+        border-bottom: none;
+        border-right: 2px solid #e1e1e1;
+        width: 100%;
+        max-width: 200px;
+    }
+    
+    .tab-button {
+        border-bottom: none;
+        border-right: 3px solid transparent;
+        text-align: left;
+        min-width: auto;
+    }
+    
+    .tab-button.active {
+        border-bottom-color: transparent;
+        border-right-color: #305f84;
+    }
+    
+    .chart-section {
+        padding: 15px;
+    }
+}
+
+@media (max-width: 480px) {
+    .tab-navigation {
+        max-width: 150px;
+    }
+    
+    .tab-button {
+        padding: 10px 15px;
+        font-size: 12px;
+    }
+    
+    .chart-container {
+        height: 250px;
+    }
 }

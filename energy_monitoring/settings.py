@@ -141,6 +141,9 @@ CELERY_RESULT_BACKEND = "redis://redis:6379/0"
 #CELERY_BROKER_URL = 'redis://localhost:6379/0'
 #CELERY_RESULT_BACKEND = 'redis://localhost:6379/0'
 
+# Celery Beat Schedule Configuration
+CELERY_BEAT_SCHEDULE_INTERVAL = 120  # Schedule interval in seconds (default: 2 minutes)
+
 #TODO: Decidere se mantenere
 DATA_UPLOAD_MAX_NUMBER_FIELDS = 10000  # Set this to a large enough number
 

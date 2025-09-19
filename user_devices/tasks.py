@@ -7,7 +7,7 @@ from .models import Device, Gateway, DeviceData, EnergyData
 from pymodbus.client import ModbusTcpClient
 from redis import Redis 
 from redis.lock import Lock
-from .functions import read_modbus_registers, map_variables, read_dlms_values, compute_variables, compute_energy, store_data_in_database, store_energy_data_in_database
+import user_devices.functions as functions
 
 logger = logging.getLogger(__name__)
 
@@ -50,15 +50,15 @@ def scan_and_read_devices(gateway_ip):
                         logger.info(f"Connected to device {device.name} on {gateway.ip_address}:{device.port}")
                         
                         # Step 1a: Read raw Modbus registers
-                        base_values = read_modbus_registers(device, client)
+                        base_values = functions.read_modbus_registers(device, client)
                         logger.info(f"Values read: {base_values}")
 
                         # Step 2a: Map raw values
-                        mapped_values = map_variables(base_values, device)
+                        mapped_values = functions.map_variables(base_values, device)
                         logger.info(f"Values mapped: {mapped_values}")
                         
                         # Step 3: Compute derived variables
-                        computed_values = compute_variables(mapped_values, device)
+                        computed_values = functions.compute_variables(mapped_values, device)
                         logger.info(f"Values computed: {computed_values}")
 
                         # Step 4: Merge values
@@ -67,7 +67,7 @@ def scan_and_read_devices(gateway_ip):
                         logger.info(f"Final values: {values}")
                     elif device.protocol == 'dlms':
                         logger.info(f"Connected to device {device.name} on {gateway.ip_address}:{device.port}")
-                        values = read_dlms_values(device)
+                        values = functions.read_dlms_values(device)
                         logger.info(f"Values read: {values}")
                     
                     else:
@@ -75,26 +75,78 @@ def scan_and_read_devices(gateway_ip):
                     
                     if values is not None:
 
-                        # Step 5: Compute energy
+                        # Step 5: Compute device availability
+                        device.availability = functions.compute_device_availability(device, values)
+                        logger.info(f"Device availability: {device.availability}")
+
+                        # Step 6: Compute energy
                         logger.info(f"Computing energy for device {device.name}")
                         device_data = DeviceData.objects.filter(device_name=device)
                         energy_data = EnergyData.objects.filter(device_name=device)
-                        energy_values = compute_energy(values, device_data, energy_data)
+                        energy_values = functions.compute_energy(values, device_data, energy_data)
 
-                        # Step 6: Store in DB
-                        store_data_in_database(device, values)
+                        # Step 7: Store in DB
+                        functions.store_data_in_database(device, values)
                         logger.info(f"Data saved for device {device.name}")
 
-                        # Step 7: Store energy data in DB separately
+                        # Step 8: Store energy data in DB separately
                         if energy_values is not None:
-                            store_energy_data_in_database(device, energy_values)
+                            functions.store_energy_data_in_database(device, energy_values)
+                            device.daily_production = energy_values.get('Energy_daily_produced', {}).get('value', 0.0)
+                            device.daily_consumption = energy_values.get('Energy_daily_consumed', {}).get('value', 0.0)
                             logger.info(f"Energy data saved for device {device.name}")
+
+                        device.save()
+                        logger.info(f"Device availability saved for device {device.name}")
 
                 except Exception as e:
                     logger.error(f"Error while reading values for device {device.name}: {e}")
+                    return
                 finally:
                     if device.protocol == 'modbus':
-                        client.close()
+                        client.close()        
+                        
+@shared_task
+def compute_plant_metrics():
+    """
+    Celery task to compute and store plant metrics (availability, performance, production, consumption)
+    for all gateways. Runs every 15 minutes.
+    """
+    logger.info("Computing plant metrics for all gateways...")
+    
+    try:
+        gateways = Gateway.objects.all()
+        
+        for gateway in gateways:
+            try:
+                # Get devices for this gateway
+                devices = Device.objects.filter(Gateway=gateway)
+                if not devices:
+                    logger.info(f"No devices found for gateway {gateway.ip_address}")
+                    continue
+                
+                # Compute plant metrics
+                functions.compute_plant_production(gateway, devices)
+                functions.compute_plant_consumption(gateway, devices)
+                functions.compute_plant_availability(gateway, devices)
+                functions.compute_plant_performance(gateway, devices)
+                
+                # Create new gateway data
+                gateway_data = {
+                    'production': gateway.production,
+                    'consumption': gateway.consumption,
+                    'availability': gateway.availability,
+                    'performance': gateway.performance
+                }
+                functions.store_gateway_data_in_database(gateway, gateway_data)
+                logger.info(f"Plant availability, performance, production and consumption saved for gateway {gateway.ip_address}")
+                
+            except Exception as e:
+                logger.error(f"Error while computing plant metrics for gateway {gateway.ip_address}: {e}")
+                continue
+                
+    except Exception as e:
+        logger.error(f"Error in compute_plant_metrics task: {e}")
 
 
 @shared_task

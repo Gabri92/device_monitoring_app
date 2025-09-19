@@ -22,10 +22,55 @@
         </div>
     </header>
     <main class="main-content">
+        <!-- Plant Overview Section with Chart and Table -->
+        <div class="plant-overview-section">
+            <!-- Multi-Axis Chart -->
+            <section class="chart-section">
+                <h2>Performance Overview (24h)</h2>
+                <div class="chart-container">
+                    <canvas id="multiAxisChart" width="400" height="300"></canvas>
+                </div>
+            </section>
+        </div>
+
+                    <!-- Plant/Gateway Overview Table -->
+                    <section class="variables-homepage gateway-table-section">
+                        <h2>Plant Overview</h2>
+                        {% if gateway_rows %}
+                        <table class="gateway-table">
+                            <thead>
+                                <tr>
+                                    <th>Gateway</th>
+                                    <th>Variable Name</th>
+                                    <th>Value</th>
+                                    <th>Unit</th>
+                                    <th>Conversion Factor</th>
+                                    <th>Timestamp</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                {% for var in gateway_rows %}
+                                    <tr>
+                                        <td>{{ var.device_name }}</td>
+                                        <td>{{ var.var_name }}</td>
+                                        <td>{{ var.value }}</td>
+                                        <td>{{ var.unit }}</td>
+                                        <td>{{ var.conversion_factor }}</td>
+                                        <td>{{ var.timestamp|date:"M d, Y, g:i a" }}</td>
+                                    </tr>
+                                {% endfor %}
+                            </tbody>
+                        </table>            
+                        {% else %}
+                            <p>No gateway data available.</p>
+                        {% endif %}
+                    </section>
+
+        <!-- Device Data Table -->
         <section class="variables-homepage">
-            <h2>Highlighted Variables</h2>
-            {% if var_rows %}
-            <table>
+            <h2>Device Readings</h2>
+            {% if device_rows %}
+            <table class="device-table">
                 <thead>
                     <tr>
                         <th>Device</th>
@@ -37,7 +82,7 @@
                     </tr>
                 </thead>
                 <tbody>
-                    {% for var in var_rows %}
+                    {% for var in device_rows %}
                         <tr>
                             <td>{{ var.device_name }}</td>
                             <td>{{ var.var_name }}</td>
@@ -50,7 +95,7 @@
                 </tbody>
             </table>            
             {% else %}
-                <p>No variables selected for homepage view.</p>
+                <p>No device variables selected for homepage view.</p>
             {% endif %}
         </section>
         <!-- Devices and Gateways Side by Side -->
@@ -89,6 +134,137 @@
         </section>
     </div>
     </main>
+
+    <!-- Chart.js Library -->
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    
+    <!-- Multi-Axis Chart Script -->
+    <script>
+        // Chart data from Django
+        const chartData = JSON.parse('{{ chart_data|escapejs }}');
+        
+        // Create multi-axis chart
+        const ctx = document.getElementById('multiAxisChart').getContext('2d');
+        const multiAxisChart = new Chart(ctx, {
+            type: 'line',
+            data: {
+                labels: chartData.labels,
+                datasets: [
+                    {
+                        label: 'Radiance (W/m²)',
+                        data: chartData.radiance,
+                        borderColor: 'rgb(255, 99, 132)',
+                        backgroundColor: 'rgba(255, 99, 132, 0.2)',
+                        yAxisID: 'y1',
+                        tension: 0.1
+                    },
+                    {
+                        label: 'Production (kW)',
+                        data: chartData.production,
+                        borderColor: 'rgb(54, 162, 235)',
+                        backgroundColor: 'rgba(54, 162, 235, 0.2)',
+                        yAxisID: 'y2',
+                        tension: 0.1
+                    },
+                    {
+                        label: 'Performance (%)',
+                        data: chartData.performance,
+                        borderColor: 'rgb(75, 192, 192)',
+                        backgroundColor: 'rgba(75, 192, 192, 0.2)',
+                        yAxisID: 'y3',
+                        tension: 0.1
+                    },
+                    {
+                        label: 'Availability (%)',
+                        data: chartData.availability,
+                        borderColor: 'rgb(255, 205, 86)',
+                        backgroundColor: 'rgba(255, 205, 86, 0.2)',
+                        yAxisID: 'y3',
+                        tension: 0.1
+                    }
+                ]
+            },
+            options: {
+                responsive: true,
+                maintainAspectRatio: false,
+                layout: {
+                    padding: {
+                        top: 10,
+                        bottom: 10,
+                        left: 10,
+                        right: 10
+                    }
+                },
+                interaction: {
+                    mode: 'index',
+                    intersect: false,
+                },
+                scales: {
+                    x: {
+                        display: true,
+                        title: {
+                            display: true,
+                            text: 'Time (24h)'
+                        }
+                    },
+                    y1: {
+                        type: 'linear',
+                        display: true,
+                        position: 'left',
+                        title: {
+                            display: true,
+                            text: 'Radiance (W/m²)'
+                        },
+                        max: 1400,
+                        min: 0,
+                        grid: {
+                            drawOnChartArea: false,
+                        },
+                    },
+                    y2: {
+                        type: 'linear',
+                        display: true,
+                        position: 'right',
+                        title: {
+                            display: true,
+                            text: 'Production (kW)'
+                        },
+                        max: 500,
+                        min: 0,
+                        grid: {
+                            drawOnChartArea: false,
+                        },
+                    },
+                    y3: {
+                        type: 'linear',
+                        display: true,
+                        position: 'right',
+                        title: {
+                            display: true,
+                            text: 'Performance/Availability (%)'
+                        },
+                        max: 100,
+                        min: 0,
+                        grid: {
+                            drawOnChartArea: false,
+                        },
+                        // Offset this axis to avoid overlap
+                        offset: true
+                    }
+                },
+                plugins: {
+                    title: {
+                        display: true,
+                        text: 'Multi-Axis Performance Chart (100% = 500kW = 1400W/m²)'
+                    },
+                    legend: {
+                        display: true,
+                        position: 'top'
+                    }
+                }
+            }
+        });
+    </script>
 </body>
 
 </html>

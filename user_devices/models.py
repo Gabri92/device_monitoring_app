@@ -9,6 +9,16 @@ class Gateway(models.Model):
     ssh_username = models.CharField(max_length=50, default='ssh_user')  # SSH username
     ssh_password = models.CharField(max_length=100, default='ssh_psw')  # SSH password
     ip_address = models.CharField(max_length=50)
+    performance = models.FloatField(default=0, help_text="Performance of the plant")
+    availability = models.FloatField(default=0, help_text="Availability of the plant")
+    production = models.FloatField(default=0, help_text="Production of the plant")
+    consumption = models.FloatField(default=0, help_text="Consumption of the plant")
+    performance_factor = models.FloatField(default=0, help_text="Performance factor of the plant")
+
+    class Meta:
+        verbose_name = "Gateway"
+        verbose_name_plural = "Gateways"
+        ordering = ['name']
 
     def __str__(self):
         return f"Name: {self.name}, Ip address: {self.ip_address}"
@@ -22,10 +32,13 @@ class Device(models.Model):
     start_address = models.CharField(default = 0, help_text="Starting Modbus address in hexadecimal (e.g., 0x0280)", null=True, blank=True)
     bytes_count = models.PositiveIntegerField(default=1, help_text="Total number of consecutive bytes to read", null=True, blank=True)
     port = models.IntegerField(default=0)
+    availability = models.FloatField(default=0, help_text="Availability of the device")
     show_energy = models.BooleanField(default=False, help_text="Show real time energy production/consumption")
     show_energy_daily = models.BooleanField(default=False, help_text="Show daily energy production/consumption")
     show_energy_weekly = models.BooleanField(default=False, help_text="Show weekly energy production/consumption")
     show_energy_monthly = models.BooleanField(default=False, help_text="Show monthly energy production/consumption")
+    daily_production = models.FloatField(default=0, help_text="Daily production of the device")
+    daily_consumption = models.FloatField(default=0, help_text="Daily consumption of the device")
     register_type = models.CharField(
         max_length=10,
         choices=[('input', 'Input Register'), ('holding', 'Holding Register')],
@@ -42,7 +55,9 @@ class Device(models.Model):
     )
     
     class Meta:
-        ordering = ['id']  
+        verbose_name = "Device"
+        verbose_name_plural = "Devices"
+        ordering = ['name']  
     def __str__(self):
         return f"{self.name}"
 
@@ -111,12 +126,31 @@ class ComputedVariable(DeviceVariable):
     def __str__(self):
         return f"{self.var_name} (Computed)"
 
+class GatewayData(models.Model):
+    user = models.ManyToManyField(User, related_name='user_gateway_data')
+    Gateway = models.ForeignKey(Gateway, on_delete=models.CASCADE, related_name='gateway_data')
+    data = models.JSONField()
+    timestamp = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        verbose_name = "Gateway Data"
+        verbose_name_plural = "Gateway Data"
+        ordering = ['-timestamp']
+
+    def __str__(self):
+        return f"{self.Gateway} - {self.timestamp}"
+
 class DeviceData(models.Model):
     user = models.ManyToManyField(User, related_name='user_device_data')
-    Gateway = models.ForeignKey(Gateway, on_delete=models.CASCADE, related_name='gateway_data')
+    Gateway = models.ForeignKey(Gateway, on_delete=models.CASCADE, related_name='gateway_device_data')
     device_name = models.ForeignKey(Device, on_delete=models.CASCADE, related_name='device_data')
     data = models.JSONField()
     timestamp = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        verbose_name = "Device Data"
+        verbose_name_plural = "Device Data"
+        ordering = ['-timestamp']
 
     def __str__(self):
         return f"{self.device_name} - {self.timestamp}"
@@ -128,6 +162,11 @@ class EnergyData(models.Model):
     data = models.JSONField()
     timestamp = models.DateTimeField(auto_now_add=True)
 
+    class Meta:
+        verbose_name = "Energy Data"
+        verbose_name_plural = "Energy Data"
+        ordering = ['-timestamp']
+
     def __str__(self):
         return f"{self.device_name} - Energy - {self.timestamp}"
 
@@ -137,6 +176,11 @@ class Button(models.Model):
     pin_number = models.IntegerField()  # GPIO pin number
     is_active = models.BooleanField(default=False)  # Current pin status
     show_in_user_page = models.BooleanField(default=False)  # Show this button to users
+
+    class Meta:
+        verbose_name = "Button"
+        verbose_name_plural = "Buttons"
+        ordering = ['label']
 
     def __str__(self):
         return f"{self.Gateway.name}, {self.Gateway.ip_address}"

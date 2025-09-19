@@ -3,13 +3,14 @@ from django.contrib import messages
 from django.contrib.auth import authenticate, login, logout
 from django.shortcuts import render
 from django.shortcuts import render, get_object_or_404
+from django.db.models import Avg
 from .models import Device, Button, Gateway, ComputedVariable, ModbusMappingVariable, DlmsMappingVariable, DeviceData, EnergyData
 from django.shortcuts import redirect
 from .commands import set_pin_status
 from user_devices.helper_funcs import sanitize_variable_name, convert_to_local_time
 import json
 import logging 
-from datetime import datetime
+from datetime import datetime, timedelta
 
 def base_redirect(request):
     if request.user.is_authenticated:
@@ -23,6 +24,7 @@ logging.basicConfig(
     format='%(asctime)s [%(levelname)s] %(message)s',
 )
 logger = logging.getLogger(__name__)
+
 
 def home_view(request):
 
@@ -59,7 +61,56 @@ def home_view(request):
     logger.info(f"Enabled devices: {devices.count()}")
     logger.info("=========================================================")
     
-    var_rows = []
+    # Separate tables for gateway/plant data and device data
+    gateway_rows = []
+    device_rows = []
+    
+    # Show gateway production and consumption data
+    for gateway in gateways:
+
+        # Plant availability
+        logger.info(f"Gateway availability: {gateway.availability}")
+        gateway_rows.append({
+            'device_name': gateway.name,
+            'var_name': 'Average Availability',
+            'value': gateway.availability,
+            'unit': '%',
+            'conversion_factor': '',
+            'timestamp': datetime.now(),
+        })
+
+        # Plant production
+        logger.info(f"Gateway production: {gateway.production}")
+        logger.info(f"Gateway consumption: {gateway.consumption}")
+        gateway_rows.append({
+            'device_name': gateway.name,
+            'var_name': 'Production',
+            'value': gateway.production,
+            'unit': 'kWh',
+            'conversion_factor': '',
+            'timestamp': datetime.now(),
+        })
+
+        # Plant consumption
+        gateway_rows.append({
+            'device_name': gateway.name,
+            'var_name': 'Consumption',
+            'value': gateway.consumption,
+            'unit': 'kWh',
+            'conversion_factor': '',
+            'timestamp': datetime.now(),
+        })
+
+        # Plant performance
+        gateway_rows.append({
+            'device_name': gateway.name,
+            'var_name': 'Performance',
+            'value': gateway.performance,
+            'unit': '%',
+            'conversion_factor': '',
+            'timestamp': datetime.now(),
+        })
+
     for var in list(modbus_vars) + list(dlms_vars) + list(computed_vars):
         last_data = DeviceData.objects.filter(device_name=var.device).order_by('-timestamp').first()
         if last_data and var.var_name in last_data.data:
@@ -69,7 +120,9 @@ def home_view(request):
                 value = raw.get("value", "N/A")
                 timestamp_raw = raw.get("timestamp", last_data.timestamp)
                 try:
-                    timestamp = datetime.fromisoformat(timestamp_raw)
+                    # Parse the timestamp and convert to local time
+                    parsed_timestamp = datetime.fromisoformat(timestamp_raw)
+                    timestamp = convert_to_local_time(parsed_timestamp)
                 except Exception:
                     timestamp = convert_to_local_time(last_data.timestamp)
             elif isinstance(raw, dict) and "value" in raw:
@@ -79,7 +132,7 @@ def home_view(request):
                 value = raw
                 timestamp = convert_to_local_time(last_data.timestamp)
 
-            var_rows.append({
+            device_rows.append({
                 'device_name': var.device.name,
                 'var_name': var.var_name,
                 'value': value,
@@ -101,13 +154,13 @@ def home_view(request):
                 val = round(val,2)
             else:
                 val = value
-            var_rows.append({
+            device_rows.append({
                 'device_name': device.name,
                 'var_name': name.replace("_"," "),
                 'value': val,
                 'unit': 'kWh',
                 'conversion_factor': '',
-                'timestamp': convert_to_local_time(last_data.timestamp),
+                'timestamp': last_data.timestamp,
             })
 
         if device.show_energy and 'Energy' in energy_data:
@@ -129,12 +182,12 @@ def home_view(request):
                 if key.startswith('Energy_monthly'):
                     add_energy_row(key, val)
 
-
     return render(request, 'home.html', {
         'user': user,
         'gateways': gateways,
         'devices': devices,
-        'var_rows': var_rows
+        'gateway_rows': gateway_rows,
+        'device_rows': device_rows,
     })
 
 
@@ -245,7 +298,10 @@ def device_detail_view(request, device_name):
                 timestamp_str = entry.data.get("timestamp", "")
                 if timestamp_str:
                     try:
-                        timestamp = datetime.fromisoformat(timestamp_str).strftime("%Y-%m-%d %H:%M")
+                        # Parse the timestamp and convert to local time
+                        parsed_timestamp = datetime.fromisoformat(timestamp_str)
+                        local_timestamp = convert_to_local_time(parsed_timestamp)
+                        timestamp = local_timestamp.strftime("%Y-%m-%d %H:%M")
                         timestamps.append(timestamp)
                     except Exception as e:
                         logger.info(f"Error parsing timestamp '{timestamp_str}': {e}")
