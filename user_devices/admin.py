@@ -66,7 +66,7 @@ class DeviceAdmin(SortableAdminBase, admin.ModelAdmin):
     list_filter = ('user','Gateway', 'is_enabled')
     search_fields = ('user','Gateway')
     #inlines = [MemoryMappingInlineModbus, ComputedVariableInline]
-    actions = ['reset_axis_assignments']
+    actions = ['clone_device']
     readonly_fields = ('get_users',)
     exclude = ('user',)  # Hide the actual editable ManyToMany field
     fieldsets = (
@@ -93,9 +93,99 @@ class DeviceAdmin(SortableAdminBase, admin.ModelAdmin):
         ]
 
 
-    def reset_axis_assignments(self, request, queryset):
-        queryset.update(is_x_axis=False, is_y_axis=False)
-        self.message_user(request, "Axis assignments reset.")
+    def clone_device(self, request, queryset):
+        """
+        Clone selected devices with all their related variables and settings.
+        """
+        cloned_count = 0
+        
+        for device in queryset:
+            # Generate unique name for the cloned device
+            base_name = f"{device.name} Copy"
+            new_name = base_name
+            counter = 1
+            
+            # Ensure the name is unique
+            while Device.objects.filter(name=new_name).exists():
+                new_name = f"{base_name} {counter}"
+                counter += 1
+            
+            # Create the cloned device
+            cloned_device = Device.objects.create(
+                name=new_name,
+                Gateway=device.Gateway,
+                is_enabled=False,  # Start disabled for safety
+                slave_id=device.slave_id,
+                start_address=device.start_address,
+                bytes_count=device.bytes_count,
+                port=device.port,
+                availability=device.availability,
+                show_energy=device.show_energy,
+                show_energy_daily=device.show_energy_daily,
+                show_energy_weekly=device.show_energy_weekly,
+                show_energy_monthly=device.show_energy_monthly,
+                daily_production=device.daily_production,
+                daily_consumption=device.daily_consumption,
+                register_type=device.register_type,
+                protocol=device.protocol
+            )
+            
+            # Copy user relationships
+            for user in device.user.all():
+                cloned_device.user.add(user)
+            
+            # Clone ModbusMappingVariable instances
+            for modbus_var in device.modbus_variables.all():
+                ModbusMappingVariable.objects.create(
+                    device=cloned_device,
+                    variable_type=modbus_var.variable_type,
+                    var_name=modbus_var.var_name,
+                    unit=modbus_var.unit,
+                    show_on_graph=modbus_var.show_on_graph,
+                    show_in_homepage=modbus_var.show_in_homepage,
+                    order=modbus_var.order,
+                    address=modbus_var.address,
+                    conversion_factor=modbus_var.conversion_factor,
+                    bit_length=modbus_var.bit_length,
+                    is_signed=modbus_var.is_signed
+                )
+            
+            # Clone DlmsMappingVariable instances
+            for dlms_var in device.dlms_variables.all():
+                DlmsMappingVariable.objects.create(
+                    device=cloned_device,
+                    variable_type=dlms_var.variable_type,
+                    var_name=dlms_var.var_name,
+                    unit=dlms_var.unit,
+                    show_on_graph=dlms_var.show_on_graph,
+                    show_in_homepage=dlms_var.show_in_homepage,
+                    order=dlms_var.order,
+                    conversion_factor=dlms_var.conversion_factor,
+                    obis_code=dlms_var.obis_code,
+                    column_idx=dlms_var.column_idx
+                )
+            
+            # Clone ComputedVariable instances
+            for computed_var in device.computed_variables.all():
+                ComputedVariable.objects.create(
+                    device=cloned_device,
+                    variable_type=computed_var.variable_type,
+                    var_name=computed_var.var_name,
+                    unit=computed_var.unit,
+                    show_on_graph=computed_var.show_on_graph,
+                    show_in_homepage=computed_var.show_in_homepage,
+                    order=computed_var.order,
+                    formula=computed_var.formula
+                )
+            
+            cloned_count += 1
+        
+        if cloned_count == 1:
+            self.message_user(request, f"Successfully cloned 1 device.")
+        else:
+            self.message_user(request, f"Successfully cloned {cloned_count} devices.")
+    
+    clone_device.short_description = "Clone selected devices"
 
 class GatewayDataAdmin(admin.ModelAdmin):
     list_display = ('Gateway', 'timestamp','get_users')
