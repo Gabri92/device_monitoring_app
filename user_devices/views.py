@@ -80,12 +80,19 @@ def home_view(request):
                 })
     logger.info(f"Gateway rows: {gateway_rows}")
 
+    logger.info(f"Modbus vars: {modbus_vars}")
+    logger.info(f"Dlms vars: {dlms_vars}")
+    logger.info(f"Computed vars: {computed_vars}")
+
     # Show device data
     for var in list(modbus_vars) + list(dlms_vars) + list(computed_vars):
         last_data = DeviceData.objects.filter(device_name=var.device).order_by('-timestamp').first()
-        if last_data and var.var_name in last_data.data:
-            raw = last_data.data.get(var.var_name)
-
+        logger.info(f"Last data: {last_data}")
+        logger.info(f"Var name: {var.var_name}")
+        logger.info(f"Last data data: {last_data.data}")
+        sanitized_name = sanitize_variable_name(var.var_name)
+        if last_data and sanitized_name in last_data.data:
+            raw = last_data.data.get(sanitized_name)
             if isinstance(var, DlmsMappingVariable) and isinstance(raw, dict):
                 value = raw.get("value", "N/A")
                 timestamp_raw = raw.get("timestamp", last_data.timestamp)
@@ -254,9 +261,19 @@ def device_detail_view(request, device_name):
 
     # Only process device_data if it exists
     if device_data:
-        for key, value in device_data.data.items():
-            if not key == "timestamp":
-                context["data"][key] = value
+        # Get ordered variables to maintain admin page ordering
+        modbus_vars = device.modbus_variables.all().order_by('order')
+        dlms_vars = device.dlms_variables.all().order_by('order')
+        computed_vars = device.computed_variables.all().order_by('order')
+        
+        # Process variables in the order they appear in admin (ordered by 'order' field)
+        all_vars = list(modbus_vars) + list(dlms_vars) + list(computed_vars)
+        
+        for var in all_vars:
+            sanitized_name = sanitize_variable_name(var.var_name)
+            if sanitized_name in device_data.data:
+                value = device_data.data[sanitized_name]
+                context["data"][var.var_name] = value
 
     # Retrieve historic data for chart
     y_variable = ComputedVariable.objects.filter(device=device, show_on_graph=True).first() or \
@@ -314,21 +331,20 @@ def device_detail_view(request, device_name):
                     try:
                         # Parse the timestamp and convert to local time
                         parsed_timestamp = datetime.fromisoformat(timestamp_str)
-                        local_timestamp = convert_to_local_time(parsed_timestamp)
-                        timestamp = local_timestamp.strftime("%H:%M")
+                        timestamp = parsed_timestamp.strftime("%H:%M")
                         timestamps.append(timestamp)
                     except Exception as e:
                         logger.info(f"Error parsing timestamp '{timestamp_str}': {e}")
                         # Fallback to entry timestamp
-                        timestamp = convert_to_local_time(entry.timestamp).strftime("%Y-%m-%d %H:%M")
+                        timestamp = entry.timestamp.strftime("%H:%M")
                         timestamps.append(timestamp)
                 else:
                     # Fallback to entry timestamp if no timestamp in data
-                    timestamp = convert_to_local_time(entry.timestamp).strftime("%Y-%m-%d %H:%M")
+                    timestamp = entry.timestamp.strftime("%H:%M")
                     timestamps.append(timestamp)      
         elif device.protocol == "modbus":  # Corretto da "modubs" a "modbus"
             timestamps = [
-                convert_to_local_time(entry.timestamp).strftime("%Y-%m-%d %H:%M")  # Formato consistente con DLMS
+                convert_to_local_time(entry.timestamp).strftime("%H:%M")  # Formato consistente con DLMS
                 for entry in chart_data
             ]  
         else:
@@ -348,7 +364,6 @@ def device_detail_view(request, device_name):
         for i, entry in enumerate(chart_data):
             var_data = entry.data.get(sanitized_name, {})
             value = var_data.get("value", None) if isinstance(var_data, dict) else None
-            logger.info(f"  Entry {i}: {sanitized_name} = {value} (from {var_data})")
 
         # Assume you have logic to generate x_data and y_data
         context["x_data"] = json.dumps(x_data)

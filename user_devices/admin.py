@@ -36,7 +36,7 @@ class GatewayAdmin(admin.ModelAdmin):
 class MemoryMappingInlineModbus(SortableStackedInline, admin.StackedInline):
     model = ModbusMappingVariable
     extra = 0
-    fields = ('var_name', 'address', 'unit', 'conversion_factor', 'bit_length', 'is_signed', 'show_on_graph', 'show_in_homepage') 
+    fields = ('var_name', 'address', 'unit', 'conversion_factor', 'bit_length','endianness', 'is_signed', 'show_on_graph', 'show_in_homepage') 
     sortable = 'order'
     classes = ['modbus-inline']
     
@@ -71,7 +71,7 @@ class DeviceAdmin(SortableAdminBase, admin.ModelAdmin):
     exclude = ('user',)  # Hide the actual editable ManyToMany field
     fieldsets = (
         (None, {
-            'fields': ( 'is_enabled', 'name', 'Gateway', 'protocol', 'slave_id','register_type', 'start_address', 'bytes_count', 'port')
+            'fields': ( 'is_enabled', 'name', 'Gateway', 'protocol', 'slave_id','register_type', 'start_address', 'word_count', 'port')
         }),
         ('Energy Display Options', {
             'fields': ('show_energy','show_energy_daily', 'show_energy_weekly', 'show_energy_monthly'),

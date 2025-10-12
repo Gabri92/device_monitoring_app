@@ -26,7 +26,7 @@ class Device(models.Model):
     is_enabled = models.BooleanField(default=False, help_text="Enable/Disable monitoring for this device")
     slave_id = models.IntegerField(default=-1, help_text="Slave ID of the device(nr between 1 to 247)", null=True, blank=True)
     start_address = models.CharField(default = 0, help_text="Starting Modbus address in hexadecimal (e.g., 0x0280)", null=True, blank=True)
-    bytes_count = models.PositiveIntegerField(default=1, help_text="Total number of consecutive bytes to read", null=True, blank=True)
+    word_count = models.PositiveIntegerField(default=1, help_text="Total number of consecutive words to read", null=True, blank=True)
     port = models.IntegerField(default=0)
     availability = models.FloatField(default=0, help_text="Availability of the device")
     show_energy = models.BooleanField(default=False, help_text="Show real time energy production/consumption")
@@ -79,11 +79,11 @@ class DeviceVariable(models.Model):
         abstract = True
 
     def save(self, *args, **kwargs):
-        # If this variable is selected as X-axis, deselect others as X-axis
-        if self.show_on_graph:
-            ComputedVariable.objects.filter(show_on_graph=True).exclude(pk=self.pk).update(show_on_graph=False)
-            ModbusMappingVariable.objects.filter(show_on_graph=True).exclude(pk=self.pk).update(show_on_graph=False)
-            DlmsMappingVariable.objects.filter(show_on_graph=True).exclude(pk=self.pk).update(show_on_graph=False)
+        # If this variable is selected as X-axis, deselect others as X-axis for the same device
+        if self.show_on_graph and hasattr(self, 'device') and self.device:
+            ComputedVariable.objects.filter(device=self.device, show_on_graph=True).exclude(pk=self.pk).update(show_on_graph=False)
+            ModbusMappingVariable.objects.filter(device=self.device, show_on_graph=True).exclude(pk=self.pk).update(show_on_graph=False)
+            DlmsMappingVariable.objects.filter(device=self.device, show_on_graph=True).exclude(pk=self.pk).update(show_on_graph=False)
             
         super().save(*args, **kwargs)
 
@@ -99,6 +99,12 @@ class ModbusMappingVariable(DeviceVariable):
     is_signed = models.BooleanField(
         default=False,
         help_text="Interpret value as signed (True) or unsigned (False)"
+    )
+    endianness = models.CharField(
+        max_length=10,
+        choices=[('big', 'Big Endian'), ('little', 'Little Endian')],
+        default='big',
+        help_text="Endianness of the register (Big Endian or Little Endian)"
     )
 
     def __str__(self):

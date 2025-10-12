@@ -105,15 +105,15 @@ def read_modbus_registers(device, client):
     try:
         start_address = int(device.start_address, 16)
         logger.info(f"Start Address: {start_address}")
-        bytes_count = device.bytes_count 
-        logger.info(f"Bytes count: {bytes_count }")
+        word_count = device.word_count 
+        logger.info(f"Word count: {word_count}")
         
         # Split reads into chunks of MAX_WORDS_PER_READ
         base_values = {}
-        for offset in range(0, bytes_count, MAX_WORDS_PER_READ):
+        for offset in range(0, word_count, MAX_WORDS_PER_READ):
             current_address = start_address + offset
             logger.info(f"Start Address: {current_address}")
-            words_to_read = min(MAX_WORDS_PER_READ, (bytes_count - offset) // 2)
+            words_to_read = min(MAX_WORDS_PER_READ, word_count - offset)
             if hasattr(device, 'register_type') and device.register_type == 'holding':
                 response = client.read_holding_registers(address=current_address, count=words_to_read, device_id=device.slave_id)
             else:
@@ -121,10 +121,10 @@ def read_modbus_registers(device, client):
             if response.isError():
                 logger.info(f"Error reading address {current_address} for device {device.name}")
                 continue
-
+            logger.info(f"Response: {response.registers}")
             # Map raw values to the address space
             for i, value in enumerate(response.registers):
-                base_values[current_address + i * 2] = value
+                base_values[current_address + i] = value
             time.sleep(0.1)
         return base_values
 
@@ -152,7 +152,7 @@ def map_variables(base_values, device):
             num_registers = mapping.bit_length // 16
             registers = []
             for i in range(num_registers):
-                reg_addr = address + i * 2  # ogni registro Modbus è 2 byte
+                reg_addr = address + i  # ogni registro Modbus è 1 word
                 if reg_addr in base_values:
                     registers.append(base_values[reg_addr])
                 else:
@@ -160,8 +160,14 @@ def map_variables(base_values, device):
 
             # Combino i registri in un unico valore
             # I registri Modbus sono big-endian per default
-            raw_bytes = b''.join(reg.to_bytes(2, byteorder='big') for reg in registers)
-            raw_value = int.from_bytes(raw_bytes, byteorder='big', signed=mapping.is_signed)
+            if mapping.endianness == 'big':
+                # Use big-endian for both conversion and interpretation
+                raw_bytes = b''.join(reg.to_bytes(2, byteorder='big') for reg in registers)
+                raw_value = int.from_bytes(raw_bytes, byteorder='big', signed=mapping.is_signed)
+            else:
+                # Use little-endian for both conversion and interpretation
+                raw_bytes = b''.join(reg.to_bytes(2, byteorder='little') for reg in registers)
+                raw_value = int.from_bytes(raw_bytes, byteorder='little', signed=mapping.is_signed)
             
             # Applico il conversion factor
             converted_value = convert_value(raw_value, mapping.conversion_factor)
@@ -532,20 +538,27 @@ Compute device availability
 """
 def compute_device_availability(device, data):
     try:
-        start_of_day_utc = datetime.now(timezone.utc).replace(hour=0, minute=0, second=0, microsecond=0)
-        start_of_day_local = convert_to_local_time(start_of_day_utc)
-        start_of_day_filter = start_of_day_local.astimezone(timezone.utc)
-        device_data = DeviceData.objects.filter(device_name=device, timestamp__gte=start_of_day_filter)
+        now = datetime.now(timezone.utc)
+        now_local = convert_to_local_time(now)
+        # Get start of local day in UTC
+        start_of_local_day = datetime(now_local.year, now_local.month, now_local.day, 0, 0, 0)
+        start_of_local_day_utc = start_of_local_day.astimezone(timezone.utc)
+        device_data = DeviceData.objects.filter(device_name=device, timestamp__gte=start_of_local_day_utc)
         if device_data.count() == 0:
             return 0
         else:
             # Check the theoretical number of data at this hour and minute current and convert to second in local time
-            now = datetime.now(timezone.utc) 
-            now_local = convert_to_local_time(now)
             hour_of_day = now_local.hour * 3600 + now_local.minute * 60
             interval = settings.CELERY_BEAT_SCHEDULE_INTERVAL if device.protocol == "modbus" else 15 * 60
             num_of_data_expected = math.floor(hour_of_day / interval)
-            availability = round_to_2_decimals((device_data.count()/num_of_data_expected)*100)
+            
+            # Prevent division by zero and cap availability at 100%
+            if num_of_data_expected == 0:
+                availability = 0
+            else:
+                raw_availability = (device_data.count() / num_of_data_expected) * 100
+                # Cap availability at 100% to prevent values above 100%
+                availability = round_to_2_decimals(min(raw_availability, 100.0))
             logger.info(f"Actual hour of day: {now_local.hour}:{now_local.minute}")
             logger.info(f"Availability: {availability}")
             logger.info(f"Hour of day: {hour_of_day}")
@@ -664,10 +677,17 @@ Compute plant availability
 def compute_plant_availability(gateway, devices):
     try:
         sum_availability = 0
+        enabled_devices_count = 0
         for device in devices:
             if device.is_enabled:
                 sum_availability += device.availability
-        availability = round_to_2_decimals(sum_availability / len(devices))
+                enabled_devices_count += 1
+        
+        # Only compute average if there are enabled devices
+        if enabled_devices_count == 0:
+            return 0
+        
+        availability = round_to_2_decimals(sum_availability / enabled_devices_count)
         return availability
     except Exception as e:
         logger.info(f"Error while computing the plant availability: {e}")
@@ -677,50 +697,114 @@ def compute_plant_availability(gateway, devices):
 Compute plant performance as (Total daily energy produced / Radiance) * performance factor
 """
 def compute_plant_performance(gateway, devices):
-
-    radiance_value = find_radiance_value(devices)
-    power_in = compute_plant_production(gateway, devices)
-    if radiance_value:
-        performance = round_to_2_decimals(((power_in / radiance_value) * gateway.performance_factor) * 100)
+    try:
+        radiance_value = find_radiance_value(devices)
+        power_in = compute_plant_production(gateway, devices)
+        
+        # Validate inputs
+        if not radiance_value or radiance_value <= 0:
+            logger.info(f"Invalid radiance value ({radiance_value}) for gateway {gateway.name}")
+            return 0
+            
+        if not power_in or power_in < 0:
+            logger.info(f"Invalid power value ({power_in}) for gateway {gateway.name}")
+            return 0
+            
+        # Calculate performance: (power / radiance) * 100 for efficiency percentage
+        # Apply performance factor as a multiplier (not multiplied by 100)
+        performance =  round_to_2_decimals((power_in / radiance_value)*gateway.performance_factor * 100)
+        
+        # Cap performance at reasonable values (e.g., 200%)
+        performance = min(performance, 200.0)
+        
         logger.info(f"Plant performance saved for gateway {gateway.name}: {performance}")
         return performance
-    else:
-        logger.info(f"No radiance value found for device {device.name}")
+    except Exception as e:
+        logger.error(f"Error computing plant performance for gateway {gateway.name}: {e}")
         return 0
 
 """
 Compute plant production as (Total daily energy produced / Radiance) * performance factor
 """
 def compute_plant_production(gateway, devices):
-    # Aggregate the power in of the devices
-    power_in = 0
-    Power_in = ['Pin', 'Power Consumption', 'Potenza in entrata']
-    for device in devices:
-        if device.is_enabled:
-            latest_device_data = DeviceData.objects.filter(device_name=device).order_by('-timestamp').first()
-            if latest_device_data and latest_device_data.data:
-                for key, value in latest_device_data.data.items():
-                    if key in Power_in:
-                        if isinstance(value, dict) and 'value' in value:
-                            power_in += value['value']
-                        else:
-                            power_in += value
-    logger.info(f"Plant production saved for gateway {gateway.name}: {power_in}")
-    return power_in
+    try:
+        # Aggregate the power in of the devices
+        power_out = 0
+        power_out_variable_names = ['Pout', 'Power Production', 'Potenza in uscita']
+        
+        for device in devices:
+            if device.is_enabled:
+                logger.info(f"Computing plant production for device {device.name}")
+                latest_device_data = DeviceData.objects.filter(device_name=device).order_by('-timestamp').first()
+                logger.info(f"Latest device data: {latest_device_data}")
+                
+                if latest_device_data and latest_device_data.data:
+                    logger.info(f"Latest device data items: {latest_device_data.data.items()}")
+                    for key, value in latest_device_data.data.items():
+                        if key in power_out_variable_names:
+                            # Safely extract numeric value
+                            if isinstance(value, dict) and 'value' in value:
+                                power_value = value['value']
+                            elif isinstance(value, (int, float)):
+                                power_value = value
+                            else:
+                                logger.warning(f"Invalid power value type for device {device.name}: {type(value)}")
+                                continue
+                            
+                            # Validate numeric value
+                            if isinstance(power_value, (int, float)) and not math.isnan(power_value):
+                                power_out += power_value
+                            else:
+                                logger.warning(f"Invalid power value for device {device.name}: {power_value}")
+        
+        logger.info(f"Plant production saved for gateway {gateway.name}: {power_out}")
+        return power_out
+    except Exception as e:
+        logger.error(f"Error computing plant production for gateway {gateway.name}: {e}")
+        return 0
 
 
 def find_radiance_value(devices):
-    radiance = ['Radiance', 'radiance', 'rad', 'Rad']
-    radiance_value = None
-    for device in devices:
-        if device.is_enabled:
-            latest_device_data = DeviceData.objects.filter(device_name=device).order_by('-timestamp').first()
-            if latest_device_data and latest_device_data.data:
-                for key, value in latest_device_data.data.items():
-                    if key in radiance:
-                        if isinstance(value, dict) and 'value' in value:
-                            radiance_value = value['value']
-                        else:
-                            radiance_value = value
-                        return radiance_value
-    return None
+    try:
+        radiance = ['Radiance', 'radiance', 'rad', 'Rad']
+        mean_radiance = ['Mean Number Radiance', 'Radiance Mean', 'Rad Mean', 'Radiance Avg', 'Rad Avg']
+        radiance_value = None
+        mean_radiance_value = None
+        mean_radiance_present = False
+        
+        for device in devices:
+            if device and device.is_enabled:
+                latest_device_data = DeviceData.objects.filter(device_name=device).order_by('-timestamp').first()
+                if latest_device_data and latest_device_data.data:
+                    for key, value in latest_device_data.data.items():
+                        if key in mean_radiance:
+                            # Safely extract numeric value
+                            if isinstance(value, dict) and 'value' in value:
+                                mean_radiance_value = value['value']
+                                mean_radiance_present = True
+                            elif isinstance(value, (int, float)):
+                                mean_radiance_value = value
+                                mean_radiance_present = True
+                            else:
+                                logger.warning(f"Invalid radiance value type for device {device.name}: {type(value)}")
+                                continue
+                            
+                            # Validate numeric value
+                            if isinstance(radiance_value, (int, float)) and not math.isnan(radiance_value) and radiance_value > 0:
+                                return radiance_value
+                            else:
+                                logger.warning(f"Invalid radiance value for device {device.name}: {radiance_value}")
+                                radiance_value = None
+                        elif key in radiance and not mean_radiance_present:
+                            # Safely extract numeric value
+                            if isinstance(value, dict) and 'value' in value:
+                                radiance_value = value['value']
+                            elif isinstance(value, (int, float)):
+                                radiance_value = value
+                            else:
+                                logger.warning(f"Invalid radiance value type for device {device.name}: {type(value)}")
+                                continue
+        return radiance_value
+    except Exception as e:
+        logger.error(f"Error finding radiance value: {e}")
+        return None

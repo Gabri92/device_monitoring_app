@@ -10,7 +10,7 @@ class DeviceForm(forms.ModelForm):
         cleaned_data = super().clean()
         protocol = cleaned_data.get('protocol')
         
-        modbus_fields = ['slave_id', 'register_type', 'start_address', 'bytes_count']
+        modbus_fields = ['slave_id', 'register_type', 'start_address', 'word_count']
 
         if protocol == 'dlms':
             # Optional: remove validation errors for modbus fields
@@ -35,7 +35,7 @@ class DeviceForm(forms.ModelForm):
             obj.slave_id = None
             obj.register_type = None
             obj.start_address = None
-            obj.bytes_count = None
+            obj.word_count = None
 
         super().save_model(request, obj, form, change)
 

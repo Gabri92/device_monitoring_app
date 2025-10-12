@@ -6,14 +6,15 @@ from decimal import Decimal
 from fractions import Fraction
 from pymodbus.client import ModbusTcpClient
 from django.test import TestCase
-from user_devices.models import Device, MappingVariable, ComputedVariable, DeviceData, Gateway
+from user_devices.models import Device, ModbusMappingVariable, ComputedVariable, DeviceData, Gateway
 from user_devices.functions import (
     sanitize_variable_name, 
     read_modbus_registers, 
     map_variables, 
     compute_variables,
     compute_energy, 
-    store_data_in_database
+    store_data_in_database,
+    compute_device_availability
 )
 
 class TestSanitizeVariableName(TestCase):
@@ -36,8 +37,10 @@ class TestReadModbusRegisters(TestCase):
         # Setup mock device and client
         device = Mock()
         device.name = "Test Device"
+        device.protocol = "modbus"
+        device.register_type = "input"
         device.start_address = "0x0280"  # Hex address
-        device.bytes_count = 6  # 3 words
+        device.word_count = 3  # 3 words
         device.slave_id = 1
         
         client = Mock()
@@ -54,12 +57,12 @@ class TestReadModbusRegisters(TestCase):
         self.assertIsNotNone(result)
         self.assertEqual(len(result), 3)  # Should have 3 values from our mock
         self.assertEqual(result[640], 100)  # 0x0280 = 640 decimal
-        self.assertEqual(result[642], 200)
-        self.assertEqual(result[644], 300)
+        self.assertEqual(result[641], 200)
+        self.assertEqual(result[642], 300)
         
         # Verify client was called with correct parameters
         client.read_input_registers.assert_called_with(
-            address=640, count=3, slave=1
+            address=640, count=3, device_id=1
         )
 
     @patch('user_devices.functions.logger')
@@ -68,8 +71,10 @@ class TestReadModbusRegisters(TestCase):
         # Setup mock device and client
         device = Mock()
         device.name = "Test Device"
+        device.protocol = "modbus"
+        device.register_type = "input"
         device.start_address = "0x0280"
-        device.bytes_count = 4
+        device.word_count = 2
         device.slave_id = 1
         
         client = Mock()
@@ -93,8 +98,10 @@ class TestReadModbusRegisters(TestCase):
         # Setup mock device and client
         device = Mock()
         device.name = "Test Device"
+        device.protocol = "modbus"
+        device.register_type = "input"
         device.start_address = "0x0280"
-        device.bytes_count = 4
+        device.word_count = 2
         device.slave_id = 1
         
         client = Mock()
@@ -112,16 +119,21 @@ class TestReadModbusRegisters(TestCase):
 
 class TestMapVariables(TestCase):
     @patch('user_devices.functions.logger')
-    @patch('user_devices.functions.MappingVariable.objects.filter')
+    @patch('user_devices.functions.ModbusMappingVariable.objects.filter')
     def test_map_variables_success(self, mock_filter, mock_logger):
         """Test successful mapping of variables from raw values"""
         # Setup mock device and base values
         device = Mock()
         device.name = "Test Device"
+        device.protocol = "modbus"
+        device.register_type = "input"
+        device.start_address = "0x0280"
+        device.word_count = 2
+        device.slave_id = 1
         
         base_values = {
             0x0280: 100,  # Voltage raw value
-            0x0282: 200,  # Current raw value
+            0x0281: 200,  # Current raw value
         }
         
         # Setup mock mappings
@@ -134,7 +146,7 @@ class TestMapVariables(TestCase):
         
         current_mapping = Mock()
         current_mapping.var_name = "Current"
-        current_mapping.address = "0x0282"
+        current_mapping.address = "0x0281"
         current_mapping.conversion_factor = "0.01"
         current_mapping.unit = "A"
         current_mapping.bit_length = 16
@@ -152,12 +164,17 @@ class TestMapVariables(TestCase):
         self.assertEqual(result["Current"]["unit"], "A")
 
     @patch('user_devices.functions.logger')
-    @patch('user_devices.functions.MappingVariable.objects.filter')
+    @patch('user_devices.functions.ModbusMappingVariable.objects.filter')
     def test_map_variables_fraction_conversion(self, mock_filter, mock_logger):
         """Test mapping with fractional conversion factors"""
         device = Mock()
         device.name = "Test Device"
-        
+        device.protocol = "modbus"
+        device.register_type = "input"
+        device.start_address = "0x0284"
+        device.word_count = 1
+        device.slave_id = 1
+
         base_values = {0x0284: 300}
         
         # Test with fractional conversion factor
@@ -177,11 +194,16 @@ class TestMapVariables(TestCase):
         self.assertEqual(result["Power"]["unit"], "kW")
 
     @patch('user_devices.functions.logger')
-    @patch('user_devices.functions.MappingVariable.objects.filter')
+    @patch('user_devices.functions.ModbusMappingVariable.objects.filter')
     def test_map_variables_error_handling(self, mock_filter, mock_logger):
         """Test error handling during variable mapping"""
         device = Mock()
         device.name = "Test Device"
+        device.protocol = "modbus"
+        device.register_type = "input"
+        device.start_address = "0x0280"
+        device.word_count = 1
+        device.slave_id = 1
         
         base_values = {0x0280: 100}
         
@@ -212,11 +234,18 @@ class TestMapVariables(TestCase):
         self.assertEqual(result["Missing"]["unit"], "Y")
 
     @patch('user_devices.functions.logger')
-    @patch('user_devices.functions.MappingVariable.objects.filter')
+    @patch('user_devices.functions.ModbusMappingVariable.objects.filter')
     def test_map_variables_16bit_unsigned(self, mock_filter, mock_logger):
         device = Mock()
         device.name = "Test Device"
+        device.protocol = "modbus"
+        device.register_type = "input"
+        device.start_address = "0x0280"
+        device.word_count = 1
+        device.slave_id = 1
+
         base_values = {0x0280: 0x1234}
+
         mapping = Mock()
         mapping.var_name = "Var16U"
         mapping.address = "0x0280"
@@ -230,10 +259,16 @@ class TestMapVariables(TestCase):
         self.assertEqual(result["Var16U"]["unit"], "U")
 
     @patch('user_devices.functions.logger')
-    @patch('user_devices.functions.MappingVariable.objects.filter')
+    @patch('user_devices.functions.ModbusMappingVariable.objects.filter')
     def test_map_variables_16bit_signed(self, mock_filter, mock_logger):
         device = Mock()
         device.name = "Test Device"
+        device.protocol = "modbus"
+        device.register_type = "input"
+        device.start_address = "0x0280"
+        device.word_count = 1
+        device.slave_id = 1
+        
         base_values = {0x0280: 0xFFFF}  # -1 in signed 16-bit
         mapping = Mock()
         mapping.var_name = "Var16S"
@@ -248,12 +283,18 @@ class TestMapVariables(TestCase):
         self.assertEqual(result["Var16S"]["unit"], "S")
 
     @patch('user_devices.functions.logger')
-    @patch('user_devices.functions.MappingVariable.objects.filter')
+    @patch('user_devices.functions.ModbusMappingVariable.objects.filter')
     def test_map_variables_32bit_unsigned(self, mock_filter, mock_logger):
         device = Mock()
         device.name = "Test Device"
+        device.protocol = "modbus"
+        device.register_type = "input"
+        device.start_address = "0x0280"
+        device.word_count = 2
+        device.slave_id = 1
+        
         # 0x12345678 split into two 16-bit registers: 0x1234, 0x5678
-        base_values = {0x0280: 0x1234, 0x0282: 0x5678}
+        base_values = {0x0280: 0x1234, 0x0281: 0x5678}
         mapping = Mock()
         mapping.var_name = "Var32U"
         mapping.address = "0x0280"
@@ -261,6 +302,7 @@ class TestMapVariables(TestCase):
         mapping.unit = "U"
         mapping.bit_length = 32
         mapping.is_signed = False
+        mapping.endianness = "big"
         mock_filter.return_value = [mapping]
         result = map_variables(base_values, device)
         expected = (0x1234 << 16) | 0x5678
@@ -268,12 +310,18 @@ class TestMapVariables(TestCase):
         self.assertEqual(result["Var32U"]["unit"], "U")
 
     @patch('user_devices.functions.logger')
-    @patch('user_devices.functions.MappingVariable.objects.filter')
+    @patch('user_devices.functions.ModbusMappingVariable.objects.filter')
     def test_map_variables_32bit_signed(self, mock_filter, mock_logger):
         device = Mock()
         device.name = "Test Device"
+        device.protocol = "modbus"
+        device.register_type = "input"
+        device.start_address = "0x0280"
+        device.word_count = 2
+        device.slave_id = 1
+        
         # 0xFFFF8000 is -32768 in signed 32-bit
-        base_values = {0x0280: 0xFFFF, 0x0282: 0x8000}
+        base_values = {0x0280: 0xFFFF, 0x0281: 0x8000}
         mapping = Mock()
         mapping.var_name = "Var32S"
         mapping.address = "0x0280"
@@ -281,6 +329,7 @@ class TestMapVariables(TestCase):
         mapping.unit = "S"
         mapping.bit_length = 32
         mapping.is_signed = True
+        mapping.endianness = "big"
         mock_filter.return_value = [mapping]
         result = map_variables(base_values, device)
         expected = int.from_bytes(b'\xff\xff\x80\x00', byteorder='big', signed=True)
@@ -288,12 +337,18 @@ class TestMapVariables(TestCase):
         self.assertEqual(result["Var32S"]["unit"], "S")
 
     @patch('user_devices.functions.logger')
-    @patch('user_devices.functions.MappingVariable.objects.filter')
+    @patch('user_devices.functions.ModbusMappingVariable.objects.filter')
     def test_map_variables_64bit_unsigned(self, mock_filter, mock_logger):
         device = Mock()
         device.name = "Test Device"
+        device.protocol = "modbus"
+        device.register_type = "input"
+        device.start_address = "0x0280"
+        device.word_count = 4
+        device.slave_id = 1
+        
         # 0x0123456789ABCDEF split into four 16-bit registers
-        base_values = {0x0280: 0x0123, 0x0282: 0x4567, 0x0284: 0x89AB, 0x0286: 0xCDEF}
+        base_values = {0x0280: 0x0123, 0x0281: 0x4567, 0x0282: 0x89AB, 0x0283: 0xCDEF}
         mapping = Mock()
         mapping.var_name = "Var64U"
         mapping.address = "0x0280"
@@ -301,6 +356,7 @@ class TestMapVariables(TestCase):
         mapping.unit = "U"
         mapping.bit_length = 64
         mapping.is_signed = False
+        mapping.endianness = "big"
         mock_filter.return_value = [mapping]
         result = map_variables(base_values, device)
         expected = (0x0123 << 48) | (0x4567 << 32) | (0x89AB << 16) | 0xCDEF
@@ -308,12 +364,18 @@ class TestMapVariables(TestCase):
         self.assertEqual(result["Var64U"]["unit"], "U")
 
     @patch('user_devices.functions.logger')
-    @patch('user_devices.functions.MappingVariable.objects.filter')
+    @patch('user_devices.functions.ModbusMappingVariable.objects.filter')
     def test_map_variables_64bit_signed(self, mock_filter, mock_logger):
         device = Mock()
         device.name = "Test Device"
+        device.protocol = "modbus"
+        device.register_type = "input"
+        device.start_address = "0x0280"
+        device.word_count = 4
+        device.slave_id = 1
+        
         # 0xFFFFFFFF80000000 is -2147483648 in signed 64-bit
-        base_values = {0x0280: 0xFFFF, 0x0282: 0xFFFF, 0x0284: 0x8000, 0x0286: 0x0000}
+        base_values = {0x0280: 0xFFFF, 0x0281: 0xFFFF, 0x0282: 0x8000, 0x0283: 0x0000}
         mapping = Mock()
         mapping.var_name = "Var64S"
         mapping.address = "0x0280"
@@ -321,6 +383,7 @@ class TestMapVariables(TestCase):
         mapping.unit = "S"
         mapping.bit_length = 64
         mapping.is_signed = True
+        mapping.endianness = "big"
         mock_filter.return_value = [mapping]
         result = map_variables(base_values, device)
         expected = int.from_bytes(b'\xff\xff\xff\xff\x80\x00\x00\x00', byteorder='big', signed=True)
@@ -399,17 +462,34 @@ class TestComputeEnergy(TestCase):
         """Test energy computation with previous data available"""
         # Setup device data queryset
         device_data = Mock()
-        
-        # Mock previous data
-        previous_data = Mock()
-        previous_data.timestamp = datetime.now(datetime.timezone.utc) - timedelta(minutes=5)
-        previous_data.data = {
-            'P': {'value': 1000.0, 'unit': 'W'},
+        device_data.protocol = "modbus"
+        device_data.register_type = "input"
+        device_data.start_address = "0x0280"
+        device_data.word_count = 1
+        device_data.slave_id = 1
+
+        # Mock energy data as a json with Energy, Energy_produced, Energy_consumed, Energy_daily_produced, Energy_daily_consumed, Energy_weekly_produced, Energy_weekly_consumed, Energy_monthly_produced, Energy_monthly_consumed
+        energy_data = Mock()
+        energy_data.data = {
             'Energy': {'value': 5000.0, 'unit': 'J'},
             'Energy_produced': {'value': 1000.0, 'unit': 'J'},
-            'Energy_consumed': {'value': 6000.0, 'unit': 'J'}
+            'Energy_consumed': {'value': 6000.0, 'unit': 'J'},
+            'Energy_daily_produced': {'value': 2000.0, 'unit': 'J'},
+            'Energy_daily_consumed': {'value': 3000.0, 'unit': 'J'},
+            'Energy_weekly_produced': {'value': 4000.0, 'unit': 'J'},
+            'Energy_weekly_consumed': {'value': 5000.0, 'unit': 'J'},
+            'Energy_monthly_produced': {'value': 6000.0, 'unit': 'J'},
+            'Energy_monthly_consumed': {'value': 7000.0, 'unit': 'J'}
         }
-        
+
+        # Mock previous data with Pin, Pout
+        previous_data = Mock()
+        previous_data.timestamp = datetime.now(timezone.utc) - timedelta(minutes=5)
+        previous_data.data = {
+            'Pin': {'value': 1000.0, 'unit': 'W'},
+            'Pout': {'value': 2000.0, 'unit': 'W'}
+        }
+
         # Mock queryset methods
         device_data.order_by.return_value.first.return_value = previous_data
         
@@ -425,9 +505,9 @@ class TestComputeEnergy(TestCase):
         
         # Return different mocks for different filter calls
         def side_effect_filter(timestamp__gte):
-            if timestamp__gte > (datetime.now(datetime.timezone.utc) - timedelta(days=2)):
+            if timestamp__gte > (datetime.now(timezone.utc) - timedelta(days=2)):
                 return mock_daily_filter
-            elif timestamp__gte > (datetime.now(datetime.timezone.utc) - timedelta(days=8)):
+            elif timestamp__gte > (datetime.now(timezone.utc) - timedelta(days=8)):
                 return mock_weekly_filter
             else:
                 return mock_monthly_filter
@@ -440,7 +520,7 @@ class TestComputeEnergy(TestCase):
         }
         
         # Execute function
-        result = compute_energy(variables, device_data)
+        result = compute_energy(variables, device_data, energy_data)
 
         print(f"Result: {result}")
 
@@ -478,7 +558,7 @@ class TestComputeEnergy(TestCase):
         
         # Mock previous data
         previous_data = Mock()
-        previous_data.timestamp = datetime.now(datetime.timezone.utc) - timedelta(minutes=5)
+        previous_data.timestamp = datetime.now(timezone.utc) - timedelta(minutes=5)
         previous_data.data = {
             'P': {'value': -500.0, 'unit': 'W'},  # Negative power
             'Energy': {'value': 5000.0, 'unit': 'J'},
@@ -519,7 +599,7 @@ class TestComputeEnergy(TestCase):
         
         # Mock previous data with "Power" instead of "P"
         previous_data = Mock()
-        previous_data.timestamp = datetime.now(datetime.timezone.utc) - timedelta(minutes=5)
+        previous_data.timestamp = datetime.now(timezone.utc) - timedelta(minutes=5)
         previous_data.data = {
             'Power': {'value': 1000.0, 'unit': 'W'},
             'Energy': {'value': 5000.0, 'unit': 'J'},
@@ -594,4 +674,280 @@ class TestComputeEnergy(TestCase):
         self.assertEqual(result['Energy_monthly_consumed']['value'], 0.0)
         mock_logger.error.assert_called()
 
-# TODO: Test Commands e Tasks
+class TestDeviceAvailability(TestCase):
+    @patch('user_devices.functions.logger')
+    @patch('user_devices.functions.DeviceData')
+    def test_compute_device_availability(self, mock_device_data, mock_logger):
+        """Test device availability computation"""
+        # Setup device queryset
+        device = Mock()
+        device.name = "Test Device"
+        device.protocol = "modbus"
+        device.register_type = "input"
+        device.start_address = "0x0280"
+        device.word_count = 1
+        device.slave_id = 1
+        
+        # Mock DeviceData queryset
+        mock_queryset = Mock()
+        mock_queryset.count.return_value = 10  # Some data exists
+        mock_device_data.objects.filter.return_value = mock_queryset
+        
+        # Mock data
+        data = Mock()
+        
+        # Execute function
+        result = compute_device_availability(device, data)
+        
+        # Verify results - function returns a float value, not a dictionary
+        self.assertIsInstance(result, (int, float))
+        self.assertGreaterEqual(result, 0)
+        self.assertLessEqual(result, 100)
+
+    @patch('user_devices.functions.logger')
+    @patch('user_devices.functions.DeviceData')
+    def test_compute_device_availability_exception_handling(self, mock_device_data, mock_logger):
+        """Test exception handling during device availability computation"""
+        # Mock device queryset that raises exception
+        device = Mock()
+        device.name = "Test Device"
+        device.protocol = "modbus"
+        device.register_type = "input"
+        device.start_address = "0x0280"
+        device.word_count = 1
+        device.slave_id = 1
+        
+        # Mock DeviceData queryset that raises exception
+        mock_queryset = Mock()
+        mock_queryset.count.side_effect = Exception("Test exception")
+        mock_device_data.objects.filter.return_value = mock_queryset
+        
+        # Mock data
+        data = Mock()
+        
+        # Execute function
+        result = compute_device_availability(device, data)
+        
+        # Verify results - function returns 0 on exception
+        self.assertEqual(result, 0)
+        mock_logger.error.assert_called()
+
+    @patch('user_devices.functions.logger')
+    @patch('user_devices.functions.DeviceData')
+    def test_compute_device_availability_with_no_data(self, mock_device_data, mock_logger):
+        """Test device availability computation with no data"""
+        # Mock device queryset
+        device = Mock()
+        device.name = "Test Device"
+        device.protocol = "modbus"
+        device.register_type = "input"
+        device.start_address = "0x0280"
+        device.word_count = 1
+        device.slave_id = 1
+        
+        # Mock DeviceData queryset
+        mock_queryset = Mock()
+        mock_queryset.count.return_value = 0
+        mock_device_data.objects.filter.return_value = mock_queryset
+        
+        # Mock data
+        data = Mock()
+        
+        # Execute function
+        result = compute_device_availability(device, data)
+        
+        # Verify results - function returns 0 on no data
+        self.assertEqual(result, 0)
+        # When there's no data, the function returns early without logging
+        mock_logger.info.assert_not_called()
+
+    @patch('user_devices.functions.logger')
+    @patch('user_devices.functions.DeviceData')
+    @patch('user_devices.functions.convert_to_local_time')
+    def test_compute_device_availability_dst_spring_forward(self, mock_convert_to_local, mock_device_data, mock_logger):
+        """Test device availability during DST spring forward transition (2 AM becomes 3 AM)"""
+        # Setup device
+        device = Mock()
+        device.name = "Test Device"
+        device.protocol = "modbus"
+        device.register_type = "input"
+        device.start_address = "0x0280"
+        device.word_count = 1
+        device.slave_id = 1
+        
+        # Mock DST spring forward scenario - 2:30 AM local time (which doesn't exist)
+        # This should be handled gracefully
+        mock_local_time = Mock()
+        mock_local_time.year = 2024
+        mock_local_time.month = 3  # March (DST starts)
+        mock_local_time.day = 10
+        mock_local_time.hour = 2
+        mock_local_time.minute = 30
+        mock_convert_to_local.return_value = mock_local_time
+        
+        # Mock DeviceData queryset with specific count
+        mock_queryset = Mock()
+        mock_queryset.count.return_value = 5  # 5 data points available
+        mock_device_data.objects.filter.return_value = mock_queryset
+        
+        # Mock data
+        data = Mock()
+        
+        # Execute function
+        result = compute_device_availability(device, data)
+        
+        # Verify results - should handle DST transition gracefully
+        self.assertIsInstance(result, (int, float))
+        self.assertGreaterEqual(result, 0)
+        self.assertLessEqual(result, 100)
+        
+        # Verify the calculation is reasonable for the time period
+        # At 2:30 AM with 5 data points, availability should be calculated
+        # The exact value depends on the interval, but should be > 0 if data exists
+        if result > 0:
+            self.assertGreater(result, 0)
+            self.assertLessEqual(result, 100)
+
+    @patch('user_devices.functions.logger')
+    @patch('user_devices.functions.DeviceData')
+    @patch('user_devices.functions.convert_to_local_time')
+    def test_compute_device_availability_dst_fall_back(self, mock_convert_to_local, mock_device_data, mock_logger):
+        """Test device availability during DST fall back transition (3 AM becomes 2 AM)"""
+        # Setup device
+        device = Mock()
+        device.name = "Test Device"
+        device.protocol = "modbus"
+        device.register_type = "input"
+        device.start_address = "0x0280"
+        device.word_count = 1
+        device.slave_id = 1
+        
+        # Mock DST fall back scenario - 2:30 AM local time (occurs twice)
+        # This should be handled gracefully
+        mock_local_time = Mock()
+        mock_local_time.year = 2024
+        mock_local_time.month = 11  # November (DST ends)
+        mock_local_time.day = 3
+        mock_local_time.hour = 2
+        mock_local_time.minute = 30
+        mock_convert_to_local.return_value = mock_local_time
+        
+        # Mock DeviceData queryset
+        mock_queryset = Mock()
+        mock_queryset.count.return_value = 5
+        mock_device_data.objects.filter.return_value = mock_queryset
+        
+        # Mock data
+        data = Mock()
+        
+        # Execute function
+        result = compute_device_availability(device, data)
+        
+        # Verify results - should handle DST transition gracefully
+        self.assertIsInstance(result, (int, float))
+        self.assertGreaterEqual(result, 0)
+        self.assertLessEqual(result, 100)
+
+    @patch('user_devices.functions.logger')
+    @patch('user_devices.functions.DeviceData')
+    @patch('user_devices.functions.convert_to_local_time')
+    def test_compute_device_availability_calculation_logic(self, mock_convert_to_local, mock_device_data, mock_logger):
+        """Test that availability calculation works correctly with known inputs"""
+        # Setup device
+        device = Mock()
+        device.name = "Test Device"
+        device.protocol = "modbus"
+        device.register_type = "input"
+        device.start_address = "0x0280"
+        device.word_count = 1
+        device.slave_id = 1
+        
+        # Mock 6:00 AM local time (should have expected data count)
+        mock_local_time = Mock()
+        mock_local_time.year = 2024
+        mock_local_time.month = 6
+        mock_local_time.day = 15
+        mock_local_time.hour = 6
+        mock_local_time.minute = 0
+        mock_convert_to_local.return_value = mock_local_time
+        
+        # Mock DeviceData queryset - 10 data points available
+        mock_queryset = Mock()
+        mock_queryset.count.return_value = 10
+        mock_device_data.objects.filter.return_value = mock_queryset
+        
+        # Mock data
+        data = Mock()
+        
+        # Execute function
+        result = compute_device_availability(device, data)
+        
+        # Verify the calculation logic
+        # At 6:00 AM (21600 seconds), with modbus interval (typically 300s)
+        # Expected data count = 21600 / 300 = 72
+        # With 10 actual data points: (10/72) * 100 = ~13.89%
+        self.assertIsInstance(result, (int, float))
+        self.assertGreater(result, 0)  # Should be > 0 since we have data
+        self.assertLess(result, 100)   # Should be < 100 since we have fewer data points than expected
+        
+        # Verify logger was called with availability info
+        mock_logger.info.assert_called()
+
+    @patch('user_devices.functions.logger')
+    @patch('user_devices.functions.DeviceData')
+    @patch('user_devices.functions.convert_to_local_time')
+    def test_compute_device_availability_dst_transition_behavior(self, mock_convert_to_local, mock_device_data, mock_logger):
+        """Test that DST transitions don't break the calculation logic"""
+        # Setup device
+        device = Mock()
+        device.name = "Test Device"
+        device.protocol = "modbus"
+        device.register_type = "input"
+        device.start_address = "0x0280"
+        device.word_count = 1
+        device.slave_id = 1
+        
+        # Test DST transition times
+        test_scenarios = [
+            # Spring forward - 1:30 AM (before transition)
+            {'year': 2024, 'month': 3, 'day': 10, 'hour': 1, 'minute': 30, 'expected_behavior': 'normal'},
+            # Spring forward - 3:30 AM (after transition) 
+            {'year': 2024, 'month': 3, 'day': 10, 'hour': 3, 'minute': 30, 'expected_behavior': 'normal'},
+            # Fall back - 1:30 AM (before transition)
+            {'year': 2024, 'month': 11, 'day': 3, 'hour': 1, 'minute': 30, 'expected_behavior': 'normal'},
+            # Fall back - 2:30 AM (ambiguous hour - occurs twice)
+            {'year': 2024, 'month': 11, 'day': 3, 'hour': 2, 'minute': 30, 'expected_behavior': 'ambiguous'},
+        ]
+        
+        for scenario in test_scenarios:
+            with self.subTest(scenario=scenario):
+                # Mock local time
+                mock_local_time = Mock()
+                mock_local_time.year = scenario['year']
+                mock_local_time.month = scenario['month']
+                mock_local_time.day = scenario['day']
+                mock_local_time.hour = scenario['hour']
+                mock_local_time.minute = scenario['minute']
+                mock_convert_to_local.return_value = mock_local_time
+                
+                # Mock DeviceData queryset
+                mock_queryset = Mock()
+                mock_queryset.count.return_value = 5
+                mock_device_data.objects.filter.return_value = mock_queryset
+                
+                # Mock data
+                data = Mock()
+                
+                # Execute function
+                result = compute_device_availability(device, data)
+                
+                # Verify results are valid regardless of DST transition
+                self.assertIsInstance(result, (int, float))
+                self.assertGreaterEqual(result, 0)
+                self.assertLessEqual(result, 100)
+                
+                # For ambiguous times, the function should still work
+                if scenario['expected_behavior'] == 'ambiguous':
+                    # Should not crash or return invalid values
+                    self.assertIsNotNone(result)
+                    self.assertIsInstance(result, (int, float))

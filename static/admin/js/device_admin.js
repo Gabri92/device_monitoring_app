@@ -11,7 +11,7 @@ document.addEventListener('DOMContentLoaded', function () {
             .form-row.field-slave_id,
             .form-row.field-register_type,
             .form-row.field-start_address,
-            .form-row.field-bytes_count
+            .form-row.field-word_count
         `);
 
         if (!protocolSelect) return;
