@@ -1,0 +1,13 @@
+---
+alwaysApply: true
+---
+
+Always explain my plan first and wait for your confirmation before coding.
+
+Start with the simplest valid solution.
+
+Avoid writing duplicate code — I’ll reuse what’s in the codebase.
+
+Only make the changes you explicitly request.
+
+Use modules / separation when applicable.

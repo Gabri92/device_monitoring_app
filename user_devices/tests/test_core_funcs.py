@@ -14,7 +14,9 @@ from user_devices.functions import (
     compute_variables,
     compute_energy, 
     store_data_in_database,
-    compute_device_availability
+    compute_device_availability,
+    compute_plant_production,
+    get_quarter_hour_window
 )
 
 class TestSanitizeVariableName(TestCase):
@@ -951,3 +953,393 @@ class TestDeviceAvailability(TestCase):
                     # Should not crash or return invalid values
                     self.assertIsNotNone(result)
                     self.assertIsInstance(result, (int, float))
+
+class TestGetQuarterHourWindow(TestCase):
+    def test_get_quarter_hour_window_15_17(self):
+        """Test quarter-hour window calculation for 15:17 timestamp"""
+        timestamp = datetime(2024, 6, 15, 15, 17, 30, tzinfo=timezone.utc)
+        start_time, end_time = get_quarter_hour_window(timestamp)
+        
+        # Should return 15:00 to 15:15
+        expected_start = datetime(2024, 6, 15, 15, 0, 0, tzinfo=timezone.utc)
+        expected_end = datetime(2024, 6, 15, 15, 15, 0, tzinfo=timezone.utc)
+        
+        self.assertEqual(start_time, expected_start)
+        self.assertEqual(end_time, expected_end)
+
+    def test_get_quarter_hour_window_15_05(self):
+        """Test quarter-hour window calculation for 15:05 timestamp"""
+        timestamp = datetime(2024, 6, 15, 15, 5, 30, tzinfo=timezone.utc)
+        start_time, end_time = get_quarter_hour_window(timestamp)
+        
+        # Should return 14:45 to 15:00
+        expected_start = datetime(2024, 6, 15, 14, 45, 0, tzinfo=timezone.utc)
+        expected_end = datetime(2024, 6, 15, 15, 0, 0, tzinfo=timezone.utc)
+        
+        self.assertEqual(start_time, expected_start)
+        self.assertEqual(end_time, expected_end)
+
+    def test_get_quarter_hour_window_15_30(self):
+        """Test quarter-hour window calculation for 15:30 timestamp"""
+        timestamp = datetime(2024, 6, 15, 15, 30, 30, tzinfo=timezone.utc)
+        start_time, end_time = get_quarter_hour_window(timestamp)
+        
+        # Should return 15:15 to 15:30
+        expected_start = datetime(2024, 6, 15, 15, 15, 0, tzinfo=timezone.utc)
+        expected_end = datetime(2024, 6, 15, 15, 30, 0, tzinfo=timezone.utc)
+        
+        self.assertEqual(start_time, expected_start)
+        self.assertEqual(end_time, expected_end)
+
+    def test_get_quarter_hour_window_15_45(self):
+        """Test quarter-hour window calculation for 15:45 timestamp"""
+        timestamp = datetime(2024, 6, 15, 15, 45, 30, tzinfo=timezone.utc)
+        start_time, end_time = get_quarter_hour_window(timestamp)
+        
+        # Should return 15:30 to 15:45
+        expected_start = datetime(2024, 6, 15, 15, 30, 0, tzinfo=timezone.utc)
+        expected_end = datetime(2024, 6, 15, 15, 45, 0, tzinfo=timezone.utc)
+        
+        self.assertEqual(start_time, expected_start)
+        self.assertEqual(end_time, expected_end)
+
+class TestComputePlantProduction(TestCase):
+    @patch('user_devices.functions.DeviceData')
+    def test_compute_plant_production_modbus_quarter_hour_averaging(self, mock_device_data):
+        """Test Modbus devices use quarter-hour averaging for power calculation"""
+        # Setup gateway and devices
+        gateway = Mock()
+        gateway.name = "Test Gateway"
+        
+        device = Mock()
+        device.name = "Modbus Device"
+        device.protocol = "modbus"
+        device.is_enabled = True
+        
+        devices = [device]
+        
+        # Mock latest device data (timestamp 15:17)
+        latest_data = Mock()
+        latest_data.timestamp = datetime(2024, 6, 15, 15, 17, 30, tzinfo=timezone.utc)
+        latest_data.data = {
+            'Pout': {'value': 1000.0, 'unit': 'W'},
+            'Voltage': {'value': 230.0, 'unit': 'V'}
+        }
+        
+        # Mock quarter-hour data (15:00 to 15:15)
+        quarter_hour_data_1 = Mock()
+        quarter_hour_data_1.data = {'Pout': {'value': 800.0, 'unit': 'W'}}
+        
+        quarter_hour_data_2 = Mock()
+        quarter_hour_data_2.data = {'Pout': {'value': 900.0, 'unit': 'W'}}
+        
+        quarter_hour_data_3 = Mock()
+        quarter_hour_data_3.data = {'Pout': {'value': 1100.0, 'unit': 'W'}}
+        
+        # Mock DeviceData queryset - need to handle different filter calls
+        def mock_filter_side_effect(**kwargs):
+            mock_queryset = Mock()
+            if 'timestamp__gte' in kwargs:  # Quarter-hour data query
+                mock_queryset.order_by.return_value = [quarter_hour_data_1, quarter_hour_data_2, quarter_hour_data_3]
+            else:  # Latest data query
+                mock_queryset.order_by.return_value.first.return_value = latest_data
+            return mock_queryset
+        
+        mock_device_data.objects.filter.side_effect = mock_filter_side_effect
+        
+        # Execute function
+        result = compute_plant_production(gateway, devices)
+        
+        # Verify result - should be average of 800, 900, 1100 = 933.33
+        expected_average = (800.0 + 900.0 + 1100.0) / 3
+        self.assertAlmostEqual(result, expected_average, places=2)
+
+    @patch('user_devices.functions.DeviceData')
+    def test_compute_plant_production_dlms_latest_reading(self, mock_device_data):
+        """Test DLMS devices use latest reading only"""
+        # Setup gateway and devices
+        gateway = Mock()
+        gateway.name = "Test Gateway"
+        
+        device = Mock()
+        device.name = "DLMS Device"
+        device.protocol = "dlms"
+        device.is_enabled = True
+        
+        devices = [device]
+        
+        # Mock latest device data
+        latest_data = Mock()
+        latest_data.timestamp = datetime(2024, 6, 15, 15, 17, 30, tzinfo=timezone.utc)
+        latest_data.data = {
+            'Pout': {'value': 1000.0, 'unit': 'W'},
+            'Voltage': {'value': 230.0, 'unit': 'V'}
+        }
+        
+        # Mock DeviceData queryset
+        mock_queryset = Mock()
+        mock_queryset.filter.return_value.order_by.return_value.first.return_value = latest_data
+        mock_device_data.objects = mock_queryset
+        
+        # Execute function
+        result = compute_plant_production(gateway, devices)
+        
+        # Verify result - should be latest reading value (1000.0)
+        self.assertEqual(result, 1000.0)
+
+    @patch('user_devices.functions.DeviceData')
+    def test_compute_plant_production_modbus_no_quarter_hour_data(self, mock_device_data):
+        """Test Modbus device with no data in quarter-hour window"""
+        # Setup gateway and devices
+        gateway = Mock()
+        gateway.name = "Test Gateway"
+        
+        device = Mock()
+        device.name = "Modbus Device"
+        device.protocol = "modbus"
+        device.is_enabled = True
+        
+        devices = [device]
+        
+        # Mock latest device data
+        latest_data = Mock()
+        latest_data.timestamp = datetime(2024, 6, 15, 15, 17, 30, tzinfo=timezone.utc)
+        latest_data.data = {
+            'Pout': {'value': 1000.0, 'unit': 'W'}
+        }
+        
+        # Mock DeviceData queryset - no quarter-hour data
+        def mock_filter_side_effect(**kwargs):
+            mock_queryset = Mock()
+            if 'timestamp__gte' in kwargs:  # Quarter-hour data query
+                mock_queryset.order_by.return_value = []  # No data in quarter-hour window
+            else:  # Latest data query
+                mock_queryset.order_by.return_value.first.return_value = latest_data
+            return mock_queryset
+        
+        mock_device_data.objects.filter.side_effect = mock_filter_side_effect
+        
+        # Execute function
+        result = compute_plant_production(gateway, devices)
+        
+        # Verify result - should be 0 since no data in quarter-hour window
+        self.assertEqual(result, 0.0)
+
+    @patch('user_devices.functions.DeviceData')
+    def test_compute_plant_production_multiple_power_variables(self, mock_device_data):
+        """Test Modbus device with multiple power variables"""
+        # Setup gateway and devices
+        gateway = Mock()
+        gateway.name = "Test Gateway"
+        
+        device = Mock()
+        device.name = "Modbus Device"
+        device.protocol = "modbus"
+        device.is_enabled = True
+        
+        devices = [device]
+        
+        # Mock latest device data
+        latest_data = Mock()
+        latest_data.timestamp = datetime(2024, 6, 15, 15, 17, 30, tzinfo=timezone.utc)
+        latest_data.data = {
+            'Pout': {'value': 1000.0, 'unit': 'W'},
+            'Power Production': {'value': 500.0, 'unit': 'W'}
+        }
+        
+        # Mock quarter-hour data
+        quarter_hour_data_1 = Mock()
+        quarter_hour_data_1.data = {
+            'Pout': {'value': 800.0, 'unit': 'W'},
+            'Power Production': {'value': 400.0, 'unit': 'W'}
+        }
+        
+        quarter_hour_data_2 = Mock()
+        quarter_hour_data_2.data = {
+            'Pout': {'value': 1200.0, 'unit': 'W'},
+            'Power Production': {'value': 600.0, 'unit': 'W'}
+        }
+        
+        # Mock DeviceData queryset - need to handle different filter calls
+        def mock_filter_side_effect(**kwargs):
+            mock_queryset = Mock()
+            if 'timestamp__gte' in kwargs:  # Quarter-hour data query
+                mock_queryset.order_by.return_value = [quarter_hour_data_1, quarter_hour_data_2]
+            else:  # Latest data query
+                mock_queryset.order_by.return_value.first.return_value = latest_data
+            return mock_queryset
+        
+        mock_device_data.objects.filter.side_effect = mock_filter_side_effect
+        
+        # Execute function
+        result = compute_plant_production(gateway, devices)
+        
+        # Verify result - should be sum of averages
+        # Pout average: (800 + 1200) / 2 = 1000
+        # Power Production average: (400 + 600) / 2 = 500
+        # Total: 1000 + 500 = 1500
+        expected_result = 1000.0 + 500.0
+        self.assertEqual(result, expected_result)
+
+    @patch('user_devices.functions.DeviceData')
+    def test_compute_plant_production_no_power_variables(self, mock_device_data):
+        """Test device with no power variables"""
+        # Setup gateway and devices
+        gateway = Mock()
+        gateway.name = "Test Gateway"
+        
+        device = Mock()
+        device.name = "Test Device"
+        device.protocol = "modbus"
+        device.is_enabled = True
+        
+        devices = [device]
+        
+        # Mock latest device data with no power variables
+        latest_data = Mock()
+        latest_data.timestamp = datetime(2024, 6, 15, 15, 17, 30, tzinfo=timezone.utc)
+        latest_data.data = {
+            'Voltage': {'value': 230.0, 'unit': 'V'},
+            'Current': {'value': 5.0, 'unit': 'A'}
+        }
+        
+        # Mock DeviceData queryset
+        mock_queryset = Mock()
+        mock_queryset.filter.return_value.order_by.return_value.first.return_value = latest_data
+        mock_device_data.objects = mock_queryset
+        
+        # Execute function
+        result = compute_plant_production(gateway, devices)
+        
+        # Verify result - should be 0 since no power variables
+        self.assertEqual(result, 0.0)
+
+    @patch('user_devices.functions.DeviceData')
+    def test_compute_plant_production_invalid_power_values(self, mock_device_data):
+        """Test handling of invalid power values"""
+        # Setup gateway and devices
+        gateway = Mock()
+        gateway.name = "Test Gateway"
+        
+        device = Mock()
+        device.name = "Modbus Device"
+        device.protocol = "modbus"
+        device.is_enabled = True
+        
+        devices = [device]
+        
+        # Mock latest device data
+        latest_data = Mock()
+        latest_data.timestamp = datetime(2024, 6, 15, 15, 17, 30, tzinfo=timezone.utc)
+        latest_data.data = {
+            'Pout': {'value': 1000.0, 'unit': 'W'}
+        }
+        
+        # Mock quarter-hour data with invalid values
+        quarter_hour_data_1 = Mock()
+        quarter_hour_data_1.data = {'Pout': {'value': 800.0, 'unit': 'W'}}
+        
+        quarter_hour_data_2 = Mock()
+        quarter_hour_data_2.data = {'Pout': 'invalid_value'}  # Invalid format
+        
+        quarter_hour_data_3 = Mock()
+        quarter_hour_data_3.data = {'Pout': {'value': 1200.0, 'unit': 'W'}}
+        
+        # Mock DeviceData queryset - need to handle different filter calls
+        def mock_filter_side_effect(**kwargs):
+            mock_queryset = Mock()
+            if 'timestamp__gte' in kwargs:  # Quarter-hour data query
+                mock_queryset.order_by.return_value = [quarter_hour_data_1, quarter_hour_data_2, quarter_hour_data_3]
+            else:  # Latest data query
+                mock_queryset.order_by.return_value.first.return_value = latest_data
+            return mock_queryset
+        
+        mock_device_data.objects.filter.side_effect = mock_filter_side_effect
+        
+        # Execute function
+        result = compute_plant_production(gateway, devices)
+        
+        # Verify result - should be average of valid values only (800, 1200)
+        expected_average = (800.0 + 1200.0) / 2
+        self.assertEqual(result, expected_average)
+
+    @patch('user_devices.functions.DeviceData')
+    def test_compute_plant_production_exception_handling(self, mock_device_data):
+        """Test exception handling in compute_plant_production"""
+        # Setup gateway and devices
+        gateway = Mock()
+        gateway.name = "Test Gateway"
+        
+        device = Mock()
+        device.name = "Test Device"
+        device.protocol = "modbus"
+        device.is_enabled = True
+        
+        devices = [device]
+        
+        # Mock DeviceData to raise exception
+        mock_device_data.objects.filter.side_effect = Exception("Database error")
+        
+        # Execute function
+        result = compute_plant_production(gateway, devices)
+        
+        # Verify result - should return 0 on exception
+        self.assertEqual(result, 0)
+
+    @patch('user_devices.functions.DeviceData')
+    def test_compute_plant_production_multiple_devices(self, mock_device_data):
+        """Test plant production with multiple devices"""
+        # Setup gateway and devices
+        gateway = Mock()
+        gateway.name = "Test Gateway"
+        
+        # Modbus device
+        modbus_device = Mock()
+        modbus_device.name = "Modbus Device"
+        modbus_device.protocol = "modbus"
+        modbus_device.is_enabled = True
+        
+        # DLMS device
+        dlms_device = Mock()
+        dlms_device.name = "DLMS Device"
+        dlms_device.protocol = "dlms"
+        dlms_device.is_enabled = True
+        
+        devices = [modbus_device, dlms_device]
+        
+        # Mock latest device data for both devices
+        modbus_latest_data = Mock()
+        modbus_latest_data.timestamp = datetime(2024, 6, 15, 15, 17, 30, tzinfo=timezone.utc)
+        modbus_latest_data.data = {'Pout': {'value': 1000.0, 'unit': 'W'}}
+        
+        dlms_latest_data = Mock()
+        dlms_latest_data.timestamp = datetime(2024, 6, 15, 15, 17, 30, tzinfo=timezone.utc)
+        dlms_latest_data.data = {'Pout': {'value': 500.0, 'unit': 'W'}}
+        
+        # Mock quarter-hour data for Modbus device
+        quarter_hour_data = Mock()
+        quarter_hour_data.data = {'Pout': {'value': 800.0, 'unit': 'W'}}
+        
+        # Mock DeviceData queryset with side_effect for different devices and queries
+        def mock_filter_side_effect(device_name=None, **kwargs):
+            mock_queryset = Mock()
+            if device_name == modbus_device:
+                if 'timestamp__gte' in kwargs:  # Quarter-hour data query
+                    mock_queryset.order_by.return_value = [quarter_hour_data]
+                else:  # Latest data query
+                    mock_queryset.order_by.return_value.first.return_value = modbus_latest_data
+            elif device_name == dlms_device:
+                mock_queryset.order_by.return_value.first.return_value = dlms_latest_data
+            return mock_queryset
+        
+        mock_device_data.objects.filter.side_effect = mock_filter_side_effect
+        
+        # Execute function
+        result = compute_plant_production(gateway, devices)
+        
+        # Verify result - should be sum of both devices
+        # Modbus: 800.0 (quarter-hour average)
+        # DLMS: 500.0 (latest reading)
+        # Total: 1300.0
+        expected_result = 800.0 + 500.0
+        self.assertEqual(result, expected_result)

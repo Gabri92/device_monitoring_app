@@ -724,6 +724,26 @@ def compute_plant_performance(gateway, devices):
         return 0
 
 """
+Helper function to calculate quarter-hour window for power averaging
+"""
+def get_quarter_hour_window(timestamp):
+    """
+    Given a timestamp, return the start and end of the previous quarter-hour window.
+    For example, if timestamp is 15:17, return 15:00 to 15:15.
+    """
+    # Round down to the nearest quarter hour
+    minute = timestamp.minute
+    quarter_hour = (minute // 15) * 15
+    
+    # Create start of the previous quarter hour (subtract 15 minutes from current quarter hour)
+    start_time = timestamp.replace(minute=quarter_hour, second=0, microsecond=0) - timedelta(minutes=15)
+    
+    # Create end of the previous quarter hour (current quarter hour start)
+    end_time = timestamp.replace(minute=quarter_hour, second=0, microsecond=0)
+    
+    return start_time, end_time
+
+"""
 Compute plant production as (Total daily energy produced / Radiance) * performance factor
 """
 def compute_plant_production(gateway, devices):
@@ -740,22 +760,66 @@ def compute_plant_production(gateway, devices):
                 
                 if latest_device_data and latest_device_data.data:
                     logger.info(f"Latest device data items: {latest_device_data.data.items()}")
-                    for key, value in latest_device_data.data.items():
-                        if key in power_out_variable_names:
-                            # Safely extract numeric value
-                            if isinstance(value, dict) and 'value' in value:
-                                power_value = value['value']
-                            elif isinstance(value, (int, float)):
-                                power_value = value
-                            else:
-                                logger.warning(f"Invalid power value type for device {device.name}: {type(value)}")
-                                continue
+                    
+                    # Check if device has power variables
+                    device_has_power = any(key in latest_device_data.data for key in power_out_variable_names)
+                    
+                    if device_has_power:
+                        # Handle Modbus devices with quarter-hour averaging
+                        if device.protocol == "modbus":
+                            # Get quarter-hour window for averaging
+                            start_time, end_time = get_quarter_hour_window(latest_device_data.timestamp)
                             
-                            # Validate numeric value
-                            if isinstance(power_value, (int, float)) and not math.isnan(power_value):
-                                power_out += power_value
-                            else:
-                                logger.warning(f"Invalid power value for device {device.name}: {power_value}")
+                            # Get all device data within the quarter-hour window
+                            quarter_hour_data = DeviceData.objects.filter(
+                                device_name=device,
+                                timestamp__gte=start_time,
+                                timestamp__lt=end_time
+                            ).order_by('timestamp')
+                            
+                            # Calculate average power for each power variable
+                            for power_var_name in power_out_variable_names:
+                                power_values = []
+                                
+                                for data_record in quarter_hour_data:
+                                    if data_record.data and power_var_name in data_record.data:
+                                        value = data_record.data[power_var_name]
+                                        
+                                        # Safely extract numeric value
+                                        if isinstance(value, dict) and 'value' in value:
+                                            power_value = value['value']
+                                        elif isinstance(value, (int, float)):
+                                            power_value = value
+                                        else:
+                                            continue
+                                        
+                                        # Validate numeric value
+                                        if isinstance(power_value, (int, float)) and not math.isnan(power_value):
+                                            power_values.append(power_value)
+                                
+                                # Calculate average if we have values
+                                if power_values:
+                                    avg_power = sum(power_values) / len(power_values)
+                                    power_out += avg_power
+                        
+                        # Handle DLMS devices (use latest reading)
+                        else:
+                            for key, value in latest_device_data.data.items():
+                                if key in power_out_variable_names:
+                                    # Safely extract numeric value
+                                    if isinstance(value, dict) and 'value' in value:
+                                        power_value = value['value']
+                                    elif isinstance(value, (int, float)):
+                                        power_value = value
+                                    else:
+                                        logger.warning(f"Invalid power value type for device {device.name}: {type(value)}")
+                                        continue
+                                    
+                                    # Validate numeric value
+                                    if isinstance(power_value, (int, float)) and not math.isnan(power_value):
+                                        power_out += power_value
+                                    else:
+                                        logger.warning(f"Invalid power value for device {device.name}: {power_value}")
         
         logger.info(f"Plant production saved for gateway {gateway.name}: {power_out}")
         return power_out
