@@ -132,7 +132,7 @@ class GatewayData(models.Model):
     user = models.ManyToManyField(User, related_name='user_gateway_data')
     Gateway = models.ForeignKey(Gateway, on_delete=models.CASCADE, related_name='gateway_data')
     data = models.JSONField()
-    timestamp = models.DateTimeField(auto_now_add=True)
+    timestamp = models.DateTimeField()
 
     class Meta:
         verbose_name = "Gateway Data"

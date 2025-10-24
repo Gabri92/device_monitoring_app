@@ -184,7 +184,7 @@ def home_view(request):
         radiance_data = []
         
         for entry in gateway_data:
-            # Format timestamp for display
+            # Format timestamp for display. Find the nearest quarter-hour timestamp
             timestamp = convert_to_local_time(entry.timestamp).strftime("%H:%M")
             labels.append(timestamp)
             

@@ -591,12 +591,36 @@ Store Gateway data into the Database
 """
 def store_gateway_data_in_database(gateway, data):
     try:
-        gateway_data = GatewayData.objects.create(
+        # Get current time and convert to local time for consistent quarter-hour calculation
+        now = datetime.now(timezone.utc)
+        now_local = convert_to_local_time(now)
+        
+        # Calculate quarter-hour timestamp in local time
+        quarter_hour = (now_local.minute // 15) * 15
+        target_timestamp = now_local.replace(minute=quarter_hour, second=0, microsecond=0)
+        
+        # Convert back to UTC for database comparison (since timestamps are stored in UTC)
+        target_timestamp_utc = target_timestamp.astimezone(timezone.utc)
+        
+        # Check if data already exists for this exact hour and minute (quarter-hour)
+        existing_data = GatewayData.objects.filter(
             Gateway=gateway,
-            data=data
-        )
-        if hasattr(gateway, "user"):
-            gateway_data.user.set(gateway.user.all())
+            timestamp=target_timestamp_utc
+        ).first()
+        
+        if existing_data:
+            logger.info(f"Gateway data already exists for {target_timestamp}, skipping save")
+            return
+        else:
+            # Create new gateway data with the quarter-hour timestamp
+            gateway_data = GatewayData.objects.create(
+                Gateway=gateway,
+                timestamp=target_timestamp_utc,
+                data=data
+            )
+            if hasattr(gateway, "user"):
+                gateway_data.user.set(gateway.user.all())
+            logger.info(f"New gateway data saved for {target_timestamp}")
     except Exception as e:
         logger.info(f"Error while saving the gateway data: {e}")
 
@@ -688,6 +712,9 @@ def compute_plant_availability(gateway, devices):
             return 0
         
         availability = round_to_2_decimals(sum_availability / enabled_devices_count)
+
+        availability = min(availability, 100.0)
+
         return availability
     except Exception as e:
         logger.info(f"Error while computing the plant availability: {e}")
@@ -714,8 +741,8 @@ def compute_plant_performance(gateway, devices):
         # Apply performance factor as a multiplier (not multiplied by 100)
         performance =  round_to_2_decimals((power_in / radiance_value)*gateway.performance_factor * 100)
         
-        # Cap performance at reasonable values (e.g., 200%)
-        performance = min(performance, 200.0)
+        # Cap performance at reasonable values (e.g., 100%)
+        performance = min(performance, 100.0)
         
         logger.info(f"Plant performance saved for gateway {gateway.name}: {performance}")
         return performance
@@ -770,6 +797,10 @@ def compute_plant_production(gateway, devices):
                             # Get quarter-hour window for averaging
                             start_time, end_time = get_quarter_hour_window(latest_device_data.timestamp)
                             
+                            logger.info(f"PLANT PRODUCTION: Computing quarter-hour window for device {device.name}")
+                            logger.info(f"Start time: {start_time}")
+                            logger.info(f"End time: {end_time}")
+
                             # Get all device data within the quarter-hour window
                             quarter_hour_data = DeviceData.objects.filter(
                                 device_name=device,
@@ -830,8 +861,11 @@ def compute_plant_production(gateway, devices):
 
 def find_radiance_value(devices):
     try:
-        radiance = ['Radiance', 'radiance', 'rad', 'Rad']
+        # Define mean radiance keys (higher priority)
         mean_radiance = ['Mean Number Radiance', 'Radiance Mean', 'Rad Mean', 'Radiance Avg', 'Rad Avg']
+        # Define general radiance keys (lower priority)
+        radiance = ['Radiance', 'radiance', 'rad', 'Rad']
+        
         radiance_value = None
         mean_radiance_value = None
         mean_radiance_present = False
@@ -839,36 +873,114 @@ def find_radiance_value(devices):
         for device in devices:
             if device and device.is_enabled:
                 latest_device_data = DeviceData.objects.filter(device_name=device).order_by('-timestamp').first()
+
+                logger.info(f"RADIANCE")
+                logger.info(f"Latest device data: {latest_device_data}")
+                logger.info(f"Latest device data items: {latest_device_data.data.items()}")
+                logger.info(f"Latest device data timestamp: {latest_device_data.timestamp}")
+
                 if latest_device_data and latest_device_data.data:
-                    for key, value in latest_device_data.data.items():
-                        if key in mean_radiance:
-                            # Safely extract numeric value
-                            if isinstance(value, dict) and 'value' in value:
-                                mean_radiance_value = value['value']
-                                mean_radiance_present = True
-                            elif isinstance(value, (int, float)):
-                                mean_radiance_value = value
-                                mean_radiance_present = True
-                            else:
-                                logger.warning(f"Invalid radiance value type for device {device.name}: {type(value)}")
-                                continue
+                    # Check if device has radiance variables (either mean or general)
+                    device_has_mean_radiance = any(key in latest_device_data.data for key in mean_radiance)
+                    device_has_radiance = any(key in latest_device_data.data for key in radiance)
+
+                    if device_has_mean_radiance or device_has_radiance:
+                        if device.protocol == "modbus":
+                            start_time, end_time = get_quarter_hour_window(latest_device_data.timestamp)
+                            quarter_hour_data = DeviceData.objects.filter(
+                                device_name=device,
+                                timestamp__gte=start_time,
+                                timestamp__lt=end_time
+                            ).order_by('timestamp')
+
+                            # First, check for mean radiance (higher priority)
+                            for radiance_value_name in mean_radiance:
+                                radiance_values = []
+                                for data_record in quarter_hour_data:
+                                    if data_record.data and radiance_value_name in data_record.data:
+                                        value = data_record.data[radiance_value_name]
+                                        if isinstance(value, dict) and 'value' in value:
+                                            radiance_values.append(value['value'])
+                                        elif isinstance(value, (int, float)):
+                                            radiance_values.append(value)
+                                        else:
+                                            logger.warning(f"Invalid mean radiance value type for device {device.name}: {type(value)}")
+                                            continue
+                                
+                                # If we found valid mean radiance values, calculate average and return immediately
+                                if radiance_values:
+                                    avg_radiance = sum(radiance_values) / len(radiance_values)
+                                    # Validate the average value
+                                    if isinstance(avg_radiance, (int, float)) and not math.isnan(avg_radiance) and avg_radiance >= 0:
+                                        return avg_radiance
                             
-                            # Validate numeric value
-                            if isinstance(radiance_value, (int, float)) and not math.isnan(radiance_value) and radiance_value > 0:
-                                return radiance_value
-                            else:
-                                logger.warning(f"Invalid radiance value for device {device.name}: {radiance_value}")
-                                radiance_value = None
-                        elif key in radiance and not mean_radiance_present:
-                            # Safely extract numeric value
-                            if isinstance(value, dict) and 'value' in value:
-                                radiance_value = value['value']
-                            elif isinstance(value, (int, float)):
-                                radiance_value = value
-                            else:
-                                logger.warning(f"Invalid radiance value type for device {device.name}: {type(value)}")
-                                continue
-        return radiance_value
+                            # If no mean radiance found, check for general radiance (lower priority)
+                            if not mean_radiance_present:
+                                logger.info(f"No mean radiance found, checking for general radiance")
+                                for radiance_value_name in radiance:
+                                    radiance_values = []
+                                    for data_record in quarter_hour_data:
+                                        if data_record.data and radiance_value_name in data_record.data:
+                                            value = data_record.data[radiance_value_name]
+                                            if isinstance(value, dict) and 'value' in value:
+                                                radiance_values.append(value['value'])
+                                            elif isinstance(value, (int, float)):
+                                                radiance_values.append(value)
+                                            else:
+                                                logger.warning(f"Invalid radiance value type for device {device.name}: {type(value)}")
+                                                continue
+                                    
+                                    # If we found valid radiance values, calculate average and return
+                                    if radiance_values:
+                                        avg_radiance = sum(radiance_values) / len(radiance_values)
+                                        # Validate the average value
+                                        if isinstance(avg_radiance, (int, float)) and not math.isnan(avg_radiance) and avg_radiance >= 0:
+                                            return avg_radiance
+
+                        else:  # DLMS protocol
+                            # First, check for mean radiance (higher priority)
+                            for key, value in latest_device_data.data.items():
+                                if key in mean_radiance:
+                                    # Safely extract numeric value
+                                    if isinstance(value, dict) and 'value' in value:
+                                        mean_radiance_value = value['value']
+                                    elif isinstance(value, (int, float)):
+                                        mean_radiance_value = value
+                                    else:
+                                        logger.warning(f"Invalid mean radiance value type for device {device.name}: {type(value)}")
+                                        continue
+                                    
+                                    # Validate numeric value
+                                    if isinstance(mean_radiance_value, (int, float)) and not math.isnan(mean_radiance_value) and mean_radiance_value >= 0:
+                                        mean_radiance_present = True
+                                        return mean_radiance_value
+                                    else:
+                                        continue
+                            
+                            # If no mean radiance found, check for general radiance (lower priority)
+                            if not mean_radiance_present:
+                                for key, value in latest_device_data.data.items():
+                                    if key in radiance:
+                                        # Safely extract numeric value
+                                        if isinstance(value, dict) and 'value' in value:
+                                            radiance_value = value['value']
+                                        elif isinstance(value, (int, float)):
+                                            radiance_value = value
+                                        else:
+                                            logger.warning(f"Invalid radiance value type for device {device.name}: {type(value)}")
+                                            continue
+                                        
+                                        # Validate numeric value
+                                        if isinstance(radiance_value, (int, float)) and not math.isnan(radiance_value) and radiance_value >= 0:
+                                            return radiance_value
+                                        else:
+                                            continue
+                
+                logger.info(f"No radiance value found for device {device.name}")
+        
+        # Return None if no radiance value found in any device
+        return None
+            
     except Exception as e:
         logger.error(f"Error finding radiance value: {e}")
         return None
