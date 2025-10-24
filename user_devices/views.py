@@ -11,6 +11,9 @@ from user_devices.helper_funcs import sanitize_variable_name, convert_to_local_t
 import json
 import logging 
 from datetime import datetime, timedelta
+from django.utils import timezone
+import csv
+from io import StringIO
 
 def base_redirect(request):
     if request.user.is_authenticated:
@@ -35,6 +38,21 @@ def home_view(request):
     gateways = Gateway.objects.filter(user=user)
     # Get user's gateways
     gateways = Gateway.objects.filter(user=user)
+    
+    # Handle date selection
+    selected_date = request.GET.get('date')
+    if selected_date:
+        try:
+            selected_date = datetime.strptime(selected_date, '%Y-%m-%d').date()
+        except ValueError:
+            selected_date = None
+    
+    if not selected_date:
+        selected_date = timezone.now().date()
+    
+    # Calculate start and end of selected day
+    start_of_day = timezone.make_aware(datetime.combine(selected_date, datetime.min.time()))
+    end_of_day = timezone.make_aware(datetime.combine(selected_date, datetime.max.time()))
     
     # Get devices through the gateway relationship
     all_devices = Device.objects.filter(Gateway__in=gateways)
@@ -159,45 +177,67 @@ def home_view(request):
                 if key.startswith('Energy_monthly'):
                     add_energy_row(key, val)
 
+    # Generate 24-hour time grid (15-minute intervals)
+    def generate_24h_grid():
+        grid = []
+        for hour in range(24):
+            for minute in [0, 15, 30, 45]:
+                time_str = f"{hour:02d}:{minute:02d}"
+                grid.append(time_str)
+        return grid
+    
     # Collect chart data for each gateway
     gateway_chart_data = {}
+    time_grid = generate_24h_grid()  # Fixed 24-hour grid
     
     for gateway in gateways:
-        # Get GatewayData for the last 24 hours for this specific gateway
-        from datetime import timedelta
-        from django.utils import timezone
-        
-        now = timezone.now()
-        twenty_four_hours_ago = now - timedelta(hours=24)
-        
+        # Get GatewayData for the selected day
         gateway_data = GatewayData.objects.filter(
             Gateway=gateway,
-            timestamp__gte=twenty_four_hours_ago
+            timestamp__gte=start_of_day,
+            timestamp__lte=end_of_day
         ).order_by('timestamp')
         
-        # Extract chart data
-        labels = []
+        # Create data mapping for the 24-hour grid
+        data_map = {}
+        for entry in gateway_data:
+            # Convert to local time and round to nearest 15-minute interval
+            local_time = convert_to_local_time(entry.timestamp)
+            hour = local_time.hour
+            minute = (local_time.minute // 15) * 15
+            time_key = f"{hour:02d}:{minute:02d}"
+            
+            # Extract data values
+            data = entry.data
+            data_map[time_key] = {
+                'production': data.get('production', {}).get('value', 0),
+                'performance': data.get('performance', {}).get('value', 0),
+                'availability': data.get('availability', {}).get('value', 0),
+                'radiance': data.get('radiance', {}).get('value', 0),
+            }
+        
+        # Generate data arrays for the complete 24-hour grid
         production_data = []
-        consumption_data = []
         performance_data = []
         availability_data = []
         radiance_data = []
         
-        for entry in gateway_data:
-            # Format timestamp for display. Find the nearest quarter-hour timestamp
-            timestamp = convert_to_local_time(entry.timestamp).strftime("%H:%M")
-            labels.append(timestamp)
-            
-            # Extract data values
-            data = entry.data
-            production_data.append(data.get('production', {}).get('value', 0))
-            performance_data.append(data.get('performance', {}).get('value', 0))
-            availability_data.append(data.get('availability', {}).get('value', 0))
-            radiance_data.append(data.get('radiance', {}).get('value', 0))
+        for time_slot in time_grid:
+            if time_slot in data_map:
+                production_data.append(data_map[time_slot]['production'])
+                performance_data.append(data_map[time_slot]['performance'])
+                availability_data.append(data_map[time_slot]['availability'])
+                radiance_data.append(data_map[time_slot]['radiance'])
+            else:
+                # No data for this time slot - use null to show empty
+                production_data.append(None)
+                performance_data.append(None)
+                availability_data.append(None)
+                radiance_data.append(None)
         
         gateway_chart_data[gateway.id] = {
             'gateway_name': gateway.name,
-            'labels': labels,
+            'labels': time_grid,
             'production': production_data,
             'performance': performance_data,
             'availability': availability_data,
@@ -215,6 +255,7 @@ def home_view(request):
         'device_rows': device_rows,
         'gateway_chart_data': gateway_chart_data,
         'gateway_chart_data_json': gateway_chart_data_json,
+        'selected_date': selected_date,
     })
 
 
@@ -389,3 +430,121 @@ def toggle_button_status(request, button_id):
         messages.error(request, f"Error updating button: {response}")
     # Redirect back to the referring page
     return redirect(request.META.get('HTTP_REFERER', '/'))
+
+def download_data(request):
+    """Handle data download requests with date range validation"""
+    if not request.user.is_authenticated:
+        return redirect('login')
+    
+    if request.method != 'POST':
+        messages.error(request, 'Invalid request method.')
+        return redirect('home')
+    
+    # Get form data
+    data_type = request.POST.get('data_type')
+    start_date_str = request.POST.get('start_date')
+    end_date_str = request.POST.get('end_date')
+    
+    # Validate required fields
+    if not all([data_type, start_date_str, end_date_str]):
+        messages.error(request, 'All fields are required.')
+        return redirect('home')
+    
+    try:
+        # Parse dates
+        start_date = datetime.strptime(start_date_str, '%Y-%m-%d').date()
+        end_date = datetime.strptime(end_date_str, '%Y-%m-%d').date()
+    except ValueError:
+        messages.error(request, 'Invalid date format.')
+        return redirect('home')
+    
+    # Validate date range (max 30 days)
+    if (end_date - start_date).days > 30:
+        messages.error(request, 'Date range cannot exceed 30 days.')
+        return redirect('home')
+    
+    if start_date > end_date:
+        messages.error(request, 'Start date must be before end date.')
+        return redirect('home')
+    
+    # Get user's gateways for security check
+    user_gateways = Gateway.objects.filter(user=request.user)
+    
+    # Determine data source and get data
+    if data_type.startswith('gateway_'):
+        gateway_id = int(data_type.split('_')[1])
+        try:
+            gateway = Gateway.objects.get(id=gateway_id, user=request.user)
+        except Gateway.DoesNotExist:
+            messages.error(request, 'Gateway not found or access denied.')
+            return redirect('home')
+        
+        # Get gateway data
+        start_datetime = timezone.make_aware(datetime.combine(start_date, datetime.min.time()))
+        end_datetime = timezone.make_aware(datetime.combine(end_date, datetime.max.time()))
+        
+        data_queryset = GatewayData.objects.filter(
+            Gateway=gateway,
+            timestamp__gte=start_datetime,
+            timestamp__lte=end_datetime
+        ).order_by('timestamp')
+        
+        source_name = gateway.name
+        data_type_name = 'Gateway'
+        
+    elif data_type.startswith('device_'):
+        device_id = int(data_type.split('_')[1])
+        try:
+            device = Device.objects.get(id=device_id, Gateway__in=user_gateways)
+        except Device.DoesNotExist:
+            messages.error(request, 'Device not found or access denied.')
+            return redirect('home')
+        
+        # Get device data
+        start_datetime = timezone.make_aware(datetime.combine(start_date, datetime.min.time()))
+        end_datetime = timezone.make_aware(datetime.combine(end_date, datetime.max.time()))
+        
+        data_queryset = DeviceData.objects.filter(
+            device_name=device,
+            timestamp__gte=start_datetime,
+            timestamp__lte=end_datetime
+        ).order_by('timestamp')
+        
+        source_name = device.name
+        data_type_name = 'Device'
+        
+    else:
+        messages.error(request, 'Invalid data type selected.')
+        return redirect('home')
+    
+    # Check if data exists
+    if not data_queryset.exists():
+        messages.error(request, f'No data found for {source_name} in the selected date range.')
+        return redirect('home')
+    
+    # Generate CSV
+    response = HttpResponse(content_type='text/csv')
+    filename = f"{data_type_name}_{source_name}_{start_date_str}_to_{end_date_str}.csv"
+    response['Content-Disposition'] = f'attachment; filename="{filename}"'
+    
+    writer = csv.writer(response)
+    
+    # Write header
+    writer.writerow(['Timestamp', 'Variable Name', 'Value', 'Unit'])
+    
+    # Write data
+    for entry in data_queryset:
+        timestamp = convert_to_local_time(entry.timestamp).strftime('%Y-%m-%d %H:%M:%S')
+        
+        if hasattr(entry, 'data') and entry.data:
+            for var_name, var_data in entry.data.items():
+                if isinstance(var_data, dict) and 'value' in var_data:
+                    value = var_data['value']
+                    unit = var_data.get('unit', '')
+                else:
+                    value = var_data
+                    unit = ''
+                
+                writer.writerow([timestamp, var_name, value, unit])
+    
+    return response

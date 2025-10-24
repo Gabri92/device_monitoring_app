@@ -15,6 +15,10 @@ app.conf.beat_schedule = {
         'task': 'user_devices.tasks.compute_plant_metrics',
         'schedule': settings.CELERY_BEAT_SCHEDULE_INTERVAL,  
     },
+    'midnight_energy_aggregation': {
+        'task': 'user_devices.tasks.midnight_energy_aggregation',
+        'schedule': {'hour': 0, 'minute': 0},  # Every day at midnight
+    },
 }
 
 app.autodiscover_tasks()

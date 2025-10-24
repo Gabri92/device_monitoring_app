@@ -6,7 +6,7 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <meta http-equiv="refresh" content="120">
-    <link rel="stylesheet" href="{% static 'css/home.css' %}">
+    <link rel="stylesheet" href="{% static 'css/home.css' %}?v=2">
     <title>Home</title>
 </head>
 
@@ -26,7 +26,19 @@
         <!-- Plant Overview Section with Tabbed Charts -->
         <div class="plant-overview-section">
             <section class="chart-section">
-                <h2>Performance Overview (24h)</h2>
+                <div class="chart-header">
+                    <h2>Performance Overview (24h)</h2>
+                    <div class="date-selector">
+                        <form method="get" class="date-form">
+                            <label for="date-picker">Select Date:</label>
+                            <input type="date" 
+                                   id="date-picker" 
+                                   name="date" 
+                                   value="{{ selected_date|date:'Y-m-d' }}"
+                                   onchange="this.form.submit()">
+                        </form>
+                    </div>
+                </div>
                 
                 {% if gateway_chart_data %}
                 <!-- Tab Navigation -->
@@ -52,7 +64,7 @@
                 </div>
                 {% else %}
                 <div class="no-data-message">
-                    <p>No gateway data available for charts.</p>
+                    <p>No gateway data available for {{ selected_date|date:"M d, Y" }}.</p>
                 </div>
                 {% endif %}
             </section>
@@ -158,6 +170,42 @@
             </ul>
         </section>
     </div>
+        <!-- Data Download Section -->
+        <section class="download-section">
+            <h2>Download Data</h2>
+            <form method="post" action="{% url 'download_data' %}" class="download-form">
+                {% csrf_token %}
+                <div class="download-controls">
+                    <div class="control-group">
+                        <label for="data_type">Select Data Source:</label>
+                        <select id="data_type" name="data_type" required>
+                            <option value="">Choose...</option>
+                            <optgroup label="Gateways">
+                                {% for gateway in gateways %}
+                                    <option value="gateway_{{ gateway.id }}">{{ gateway.name }}</option>
+                                {% endfor %}
+                            </optgroup>
+                            <optgroup label="Devices">
+                                {% for device in devices %}
+                                    <option value="device_{{ device.id }}">{{ device.name }}</option>
+                                {% endfor %}
+                            </optgroup>
+                        </select>
+                    </div>
+                    <div class="control-group">
+                        <label for="start_date">Start Date:</label>
+                        <input type="date" id="start_date" name="start_date" required>
+                    </div>
+                    <div class="control-group">
+                        <label for="end_date">End Date:</label>
+                        <input type="date" id="end_date" name="end_date" required>
+                    </div>
+                    <div class="control-group">
+                        <button type="submit" class="download-btn">Download Data</button>
+                    </div>
+                </div>
+            </form>
+        </section>
     </main>
 
     <!-- Chart.js Library -->
@@ -213,7 +261,8 @@
                             borderColor: 'rgb(54, 162, 235)',
                             backgroundColor: 'rgba(54, 162, 235, 0.2)',
                             yAxisID: 'y1',
-                            tension: 0.1
+                            tension: 0.1,
+                            spanGaps: false
                         },
                         {
                             label: 'Radiance (W/m²)',
@@ -221,7 +270,8 @@
                             borderColor: 'rgb(255, 99, 132)',
                             backgroundColor: 'rgba(255, 99, 132, 0.2)',
                             yAxisID: 'y1',
-                            tension: 0.1
+                            tension: 0.1,
+                            spanGaps: false
                         },
                         {
                             label: 'Performance (%)',
@@ -229,7 +279,8 @@
                             borderColor: 'rgb(75, 192, 192)',
                             backgroundColor: 'rgba(75, 192, 192, 0.2)',
                             yAxisID: 'y2',
-                            tension: 0.1
+                            tension: 0.1,
+                            spanGaps: false
                         },
                         {
                             label: 'Availability (%)',
@@ -237,7 +288,8 @@
                             borderColor: 'rgb(255, 205, 86)',
                             backgroundColor: 'rgba(255, 205, 86, 0.2)',
                             yAxisID: 'y2',
-                            tension: 0.1
+                            tension: 0.1,
+                            spanGaps: false
                         }
                     ]
                 },
@@ -296,7 +348,7 @@
                     plugins: {
                         title: {
                             display: true,
-                            text: data.gateway_name + ' - Performance Overview (Max: 500 kW, 1400 W/m², 100%)'
+                            text: data.gateway_name + ' - Performance Overview (Max: 500 kW, 1400 W/m², 100%) - {{ selected_date|date:"M d, Y" }}'
                         },
                         legend: {
                             display: true,
@@ -329,6 +381,56 @@
                     }
                 }
             }
+        });
+        
+        // Download form date validation
+        document.addEventListener('DOMContentLoaded', function() {
+            const startDateInput = document.getElementById('start_date');
+            const endDateInput = document.getElementById('end_date');
+            const downloadBtn = document.querySelector('.download-btn');
+            
+            // Set default dates (today and 7 days ago)
+            const today = new Date();
+            const weekAgo = new Date(today);
+            weekAgo.setDate(today.getDate() - 7);
+            
+            startDateInput.value = weekAgo.toISOString().split('T')[0];
+            endDateInput.value = today.toISOString().split('T')[0];
+            
+            // Auto-set end date when start date changes
+            startDateInput.addEventListener('change', function() {
+                const startDate = new Date(this.value);
+                const maxEndDate = new Date(startDate);
+                maxEndDate.setDate(startDate.getDate() + 30);
+                
+                // If current end date is more than 30 days from start, adjust it
+                const currentEndDate = new Date(endDateInput.value);
+                if (currentEndDate > maxEndDate) {
+                    endDateInput.value = maxEndDate.toISOString().split('T')[0];
+                }
+                
+                // Set max attribute to prevent selecting dates beyond 30 days
+                endDateInput.max = maxEndDate.toISOString().split('T')[0];
+            });
+            
+            // Validate date range on form submission
+            document.querySelector('.download-form').addEventListener('submit', function(e) {
+                const startDate = new Date(startDateInput.value);
+                const endDate = new Date(endDateInput.value);
+                const daysDiff = (endDate - startDate) / (1000 * 60 * 60 * 24);
+                
+                if (daysDiff > 30) {
+                    e.preventDefault();
+                    alert('Date range cannot exceed 30 days. Please select a smaller range.');
+                    return false;
+                }
+                
+                if (startDate > endDate) {
+                    e.preventDefault();
+                    alert('Start date must be before end date.');
+                    return false;
+                }
+            });
         });
     </script>
 </body>
