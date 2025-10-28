@@ -8,6 +8,7 @@ from pymodbus.client import ModbusTcpClient
 from redis import Redis 
 from redis.lock import Lock
 import user_devices.functions as functions
+from .helper_funcs import convert_to_local_time
 
 logger = logging.getLogger(__name__)
 
@@ -169,138 +170,189 @@ def check_all_devices():
 def midnight_energy_aggregation():
     """
     Celery task to aggregate and save energy data at midnight.
-    Collects daily, weekly, and monthly energy totals for all devices.
+    Collects daily, weekly, and monthly energy totals per gateway.
     """
     from datetime import datetime, timezone, timedelta
-    from django.db.models import Sum, Q
-    from django.db.models.functions import TruncDay, TruncWeek, TruncMonth
     
     logger.info("Starting midnight energy aggregation...")
     
     try:
-        # Get current date in local timezone
+        # Get current time and convert to local timezone (same as functions.py)
         now = datetime.now(timezone.utc)
-        today = now.date()
+        now_local = convert_to_local_time(now)
+        today = now_local.date()
         
-        # Get all active devices
-        devices = Device.objects.filter(is_enabled=True)
+        # Get all gateways
+        gateways = Gateway.objects.all()
         
-        if not devices:
-            logger.info("No active devices found for energy aggregation")
+        if not gateways.exists():
+            logger.info("No gateways found for energy aggregation")
             return
         
-        # Initialize aggregation data
-        aggregation_data = {
-            "data_type": "midnight_aggregate",
-            "date": today.isoformat(),
-            "daily": {"produced": 0.0, "consumed": 0.0},
-            "weekly": {"produced": 0.0, "consumed": 0.0},
-            "monthly": {"produced": 0.0, "consumed": 0.0}
-        }
+        # Calculate time ranges using same logic as functions.py
+        # Start of UTC day
+        start_of_day_utc = now.replace(hour=0, minute=0, second=0, microsecond=0)
         
-        # Calculate time ranges
-        start_of_day = datetime.combine(today, datetime.min.time()).replace(tzinfo=timezone.utc)
-        start_of_week = start_of_day - timedelta(days=start_of_day.weekday())
-        start_of_month = start_of_day.replace(day=1)
+        # Convert to local (Django TZ)
+        start_of_day_local = convert_to_local_time(start_of_day_utc)
         
-        for device in devices:
+        # For filtering DB (which expects UTC), convert back. Timestamps are utc in django
+        start_of_day_filter = start_of_day_local.astimezone(timezone.utc)
+        
+        # Start of UTC week
+        start_of_week_utc = now.replace(hour=0, minute=0, second=0, microsecond=0) - timedelta(days=now.weekday())
+        
+        # Convert to local (Django TZ)
+        start_of_week_local = convert_to_local_time(start_of_week_utc)
+        
+        # For filtering DB (which expects UTC), convert back. Timestamps are utc in django
+        start_of_week_filter = start_of_week_local.astimezone(timezone.utc)
+        
+        # Start of UTC month
+        start_of_month_utc = now.replace(day=1, hour=0, minute=0, second=0, microsecond=0)
+        
+        # Convert to local (Django TZ)
+        start_of_month_local = convert_to_local_time(start_of_month_utc)
+        
+        # For filtering DB (which expects UTC), convert back. Timestamps are utc in django
+        start_of_month_filter = start_of_month_local.astimezone(timezone.utc)
+        
+        # Loop through each gateway
+        for gateway in gateways:
             try:
-                # Get device data for the time periods
-                device_data = DeviceData.objects.filter(device_name=device)
+                # Get active devices for this gateway
+                devices = Device.objects.filter(Gateway=gateway, is_enabled=True)
                 
-                # Daily aggregation (today)
-                daily_data = device_data.filter(timestamp__gte=start_of_day)
-                
-                # Weekly aggregation (this week)
-                weekly_data = device_data.filter(timestamp__gte=start_of_week)
-                
-                # Monthly aggregation (this month)
-                monthly_data = device_data.filter(timestamp__gte=start_of_month)
-                
-                # Get power variable name for this device
-                power_variable = None
-                for mapping in device.modbusmappingvariable_set.all():
-                    if 'power' in mapping.variable_name.lower() or 'potenza' in mapping.variable_name.lower():
-                        power_variable = mapping.variable_name
-                        break
-                
-                if not power_variable:
-                    logger.warning(f"No power variable found for device {device.name}")
+                if not devices.exists():
+                    logger.info(f"No active devices found for gateway {gateway.name}")
                     continue
                 
-                # Calculate energy for each period
-                def calculate_energy_period(data_queryset):
-                    if not data_queryset.exists():
-                        return 0.0, 0.0
-                    
-                    # Sum positive values (consumption) and negative values (production)
-                    consumed = 0.0
-                    produced = 0.0
-                    
-                    for record in data_queryset:
-                        if power_variable in record.data:
-                            power_value = record.data[power_variable].get('value', 0)
-                            if isinstance(power_value, (int, float)):
-                                if power_value >= 0:
-                                    consumed += power_value
-                                else:
-                                    produced += abs(power_value)
-                    
-                    return produced, consumed
+                # Initialize aggregation data for this gateway
+                aggregation_data = {
+                    "data_type": "Data Aggregate",
+                    "date": today.isoformat(),
+                    "daily": {"produced": 0.0, "consumed": 0.0},
+                    "weekly": {"produced": 0.0, "consumed": 0.0},
+                    "monthly": {"produced": 0.0, "consumed": 0.0}
+                }
                 
-                # Calculate for each period
-                daily_produced, daily_consumed = calculate_energy_period(daily_data)
-                weekly_produced, weekly_consumed = calculate_energy_period(weekly_data)
-                monthly_produced, monthly_consumed = calculate_energy_period(monthly_data)
+                # Loop through each device in this gateway
+                for device in devices:
+                    try:
+                        # Get energy data for this device
+                        energy_data_queryset = EnergyData.objects.filter(device_name=device)
+                        
+                        if not energy_data_queryset.exists():
+                            logger.info(f"No energy data found for device {device.name}")
+                            continue
+                        
+                        # Get energy data for each period
+                        daily_data = energy_data_queryset.filter(timestamp__gte=start_of_day_filter)
+                        weekly_data = energy_data_queryset.filter(timestamp__gte=start_of_week_filter)
+                        monthly_data = energy_data_queryset.filter(timestamp__gte=start_of_month_filter)
+                        
+                        # Sum all Energy_produced and Energy_consumed values for each period
+                        daily_prod, daily_cons = 0.0, 0.0
+                        weekly_prod, weekly_cons = 0.0, 0.0
+                        monthly_prod, monthly_cons = 0.0, 0.0
+                        
+                        # Sum daily produced and consumed
+                        for record in daily_data:
+                            data = record.data
+                            if isinstance(data, dict):
+                                energy_produced = data.get('Energy_produced', {})
+                                energy_consumed = data.get('Energy_consumed', {})
+                                if isinstance(energy_produced, dict):
+                                    daily_prod += energy_produced.get('value', 0.0)
+                                if isinstance(energy_consumed, dict):
+                                    daily_cons += energy_consumed.get('value', 0.0)
+                        
+                        # Sum weekly produced and consumed
+                        for record in weekly_data:
+                            data = record.data
+                            if isinstance(data, dict):
+                                energy_produced = data.get('Energy_produced', {})
+                                energy_consumed = data.get('Energy_consumed', {})
+                                if isinstance(energy_produced, dict):
+                                    weekly_prod += energy_produced.get('value', 0.0)
+                                if isinstance(energy_consumed, dict):
+                                    weekly_cons += energy_consumed.get('value', 0.0)
+                        
+                        # Sum monthly produced and consumed
+                        for record in monthly_data:
+                            data = record.data
+                            if isinstance(data, dict):
+                                energy_produced = data.get('Energy_produced', {})
+                                energy_consumed = data.get('Energy_consumed', {})
+                                if isinstance(energy_produced, dict):
+                                    monthly_prod += energy_produced.get('value', 0.0)
+                                if isinstance(energy_consumed, dict):
+                                    monthly_cons += energy_consumed.get('value', 0.0)
+                        
+                        # Add to aggregation totals
+                        aggregation_data["daily"]["produced"] += daily_prod
+                        aggregation_data["daily"]["consumed"] += daily_cons
+                        aggregation_data["weekly"]["produced"] += weekly_prod
+                        aggregation_data["weekly"]["consumed"] += weekly_cons
+                        aggregation_data["monthly"]["produced"] += monthly_prod
+                        aggregation_data["monthly"]["consumed"] += monthly_cons
+                        
+                        logger.info(f"Device {device.name}: Daily({daily_prod:.2f}/{daily_cons:.2f}), "
+                                  f"Weekly({weekly_prod:.2f}/{weekly_cons:.2f}), "
+                                  f"Monthly({monthly_prod:.2f}/{monthly_cons:.2f})")
+                        
+                    except Exception as e:
+                        logger.error(f"Error processing device {device.name}: {e}")
+                        continue
                 
-                # Add to aggregation totals
-                aggregation_data["daily"]["produced"] += daily_produced
-                aggregation_data["daily"]["consumed"] += daily_consumed
-                aggregation_data["weekly"]["produced"] += weekly_produced
-                aggregation_data["weekly"]["consumed"] += weekly_consumed
-                aggregation_data["monthly"]["produced"] += monthly_produced
-                aggregation_data["monthly"]["consumed"] += monthly_consumed
+                # Round values to 2 decimal places
+                aggregation_data["daily"]["produced"] = round(aggregation_data["daily"]["produced"], 2)
+                aggregation_data["daily"]["consumed"] = round(aggregation_data["daily"]["consumed"], 2)
+                aggregation_data["weekly"]["produced"] = round(aggregation_data["weekly"]["produced"], 2)
+                aggregation_data["weekly"]["consumed"] = round(aggregation_data["weekly"]["consumed"], 2)
+                aggregation_data["monthly"]["produced"] = round(aggregation_data["monthly"]["produced"], 2)
+                aggregation_data["monthly"]["consumed"] = round(aggregation_data["monthly"]["consumed"], 2)
                 
-                logger.info(f"Device {device.name}: Daily({daily_produced:.2f}/{daily_consumed:.2f}), "
-                          f"Weekly({weekly_produced:.2f}/{weekly_consumed:.2f}), "
-                          f"Monthly({monthly_produced:.2f}/{monthly_consumed:.2f})")
+                # Save aggregated data for this gateway
+                try:
+                    # Get or create aggregation device for this gateway
+                    aggregation_device_name = f"Aggregate_{gateway.name}"
+                    aggregation_device, created = Device.objects.get_or_create(
+                        name=aggregation_device_name,
+                        defaults={
+                            'Gateway': gateway,
+                            'is_enabled': False,  # Virtual device, not scanned
+                            'protocol': 'modbus',  # Default value
+                        }
+                    )
+                    
+                    if created:
+                        logger.info(f"Created aggregation device: {aggregation_device_name} for gateway {gateway.name}")
+                        # Copy users from gateway to the aggregation device
+                        aggregation_device.user.set(gateway.user.all())
+                    
+                    # Create EnergyData entry for this gateway's aggregate
+                    energy_data = EnergyData.objects.create(
+                        Gateway=gateway,
+                        device_name=aggregation_device,
+                        data=aggregation_data
+                    )
+                    
+                    # Set users from gateway
+                    energy_data.user.set(gateway.user.all())
+                    
+                    logger.info(f"Gateway {gateway.name} - Midnight energy aggregation saved. Totals - Daily: {aggregation_data['daily']}, "
+                               f"Weekly: {aggregation_data['weekly']}, Monthly: {aggregation_data['monthly']}")
+                        
+                except Exception as e:
+                    logger.error(f"Error saving midnight aggregation for gateway {gateway.name}: {e}")
+                    continue
                 
             except Exception as e:
-                logger.error(f"Error processing device {device.name}: {e}")
+                logger.error(f"Error processing gateway {gateway.name}: {e}")
                 continue
         
-        # Round values to 2 decimal places
-        for period in ["daily", "weekly", "monthly"]:
-            for energy_type in ["produced", "consumed"]:
-                aggregation_data[period][energy_type] = round(aggregation_data[period][energy_type], 2)
-        
-        # Save aggregated data to EnergyData for each device
-        for device in devices:
-            try:
-                # Create a copy of aggregation data for this device
-                device_aggregation = aggregation_data.copy()
-                device_aggregation["device_specific"] = True
-                device_aggregation["device_name"] = device.name
-                
-                # Save to EnergyData
-                energy_record = EnergyData.objects.create(
-                    Gateway=device.Gateway,
-                    device_name=device,
-                    data=device_aggregation
-                )
-                
-                # Associate with device users
-                if hasattr(device, "user"):
-                    energy_record.user.set(device.user.all())
-                
-                logger.info(f"Midnight aggregation saved for device {device.name}")
-                
-            except Exception as e:
-                logger.error(f"Error saving midnight aggregation for device {device.name}: {e}")
-                continue
-        
-        logger.info(f"Midnight energy aggregation completed. Totals - Daily: {aggregation_data['daily']}, "
-                   f"Weekly: {aggregation_data['weekly']}, Monthly: {aggregation_data['monthly']}")
+        logger.info("Midnight energy aggregation completed for all gateways")
         
     except Exception as e:
         logger.error(f"Error in midnight_energy_aggregation task: {e}")

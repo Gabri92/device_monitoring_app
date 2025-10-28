@@ -1,5 +1,6 @@
 import os
 from celery import Celery
+from celery.schedules import crontab
 from django.conf import settings
 
 os.environ.setdefault("DJANGO_SETTINGS_MODULE", "energy_monitoring.settings")
@@ -17,7 +18,7 @@ app.conf.beat_schedule = {
     },
     'midnight_energy_aggregation': {
         'task': 'user_devices.tasks.midnight_energy_aggregation',
-        'schedule': {'hour': 0, 'minute': 0},  # Every day at midnight
+        'schedule': crontab(hour=16, minute=39),  # Every day at 15:55
     },
 }
 
