@@ -1,7 +1,7 @@
 # Building a webapp in Django for device and data management via Web Interface
 
 ## Overview
-### Main purpose of the webapp
+## Main purpose of the webapp
 The app is designed to manage and monitor Modbus-based devices within a networked environment. Its main functionalities are:
 <ul>
   <li><strong>Device Management </strong>: The app allows users to register, configure and control devices connected to a gateway. It provides a centralized interface for viewing device status, managing settings and performing actions on each device.</li>
@@ -12,7 +12,15 @@ The app is designed to manage and monitor Modbus-based devices within a networke
   <li><strong>Admin Interface</strong>: Admins have an intuitive interface where they can configure device parameters, setup modbus addresses, manage variables and perform actions like creating new button and toggling them.</li>
 </ul>
 
-### Tech Stack
+## UI
+
+### Admin section
+![admin](https://github.com/user-attachments/assets/9f350c70-35c3-475f-9d02-c38245cf81a0)
+
+### User dashboard
+![home](https://github.com/user-attachments/assets/27c1e3d6-d774-414e-aed3-e4882f23cc59)
+
+## Tech Stack
 <ul>
   <li><strong>Backend Framework </strong>: Django</li>
   <li><strong>Database </strong>: PostgreSQL</li>
@@ -21,7 +29,7 @@ The app is designed to manage and monitor Modbus-based devices within a networke
   <li><strong>Containerization> </strong>: Docker</li>
 </ul>
 
-### Architecture
+## Architecture
 <div align="center">
   <img src=/docs/images/Webapp_architecture.jpg alt="Webapp architecture" width="650" />
 </div>
@@ -39,12 +47,5 @@ The task are then stored in a queue where they are consumed from a celery worker
 Finally, the webapp read the data and show them in the user and admin interfaces.
 
 ## How to run the webapp
-The app can be launched in Debug mode by downloading the repository and typing the command 'docker-compose up -d --build'. Then it is possible to access the admin interface at 'http://localhost:8000/admin/'. 
-To run the app in production mode it is necessary to install and configure a web server, like Apache2.
-
-## Next steps
-<ul>
-  <li> Improve the user's page graphics  :white_check_mark: </li>
-  <li> Adding unit test :warning: </li>
-  <li> Include a web server like Apache or Nginx for serving the webapp with Docker </li>
-</ul>
+The app can be launched in Debug mode by downloading the repository and typing the command 'docker-compose up -d --build'. Then it is possible to access the admin interface at 'http://localhost:8000/admin/' and to access the user section at 'http://localhost:8000/home/'
+To add a new superuser execute the following command in bash: 'docker-compose exec web python manage.py createsuperuser'
