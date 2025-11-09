@@ -862,22 +862,24 @@ def compute_plant_production(gateway, devices):
 def find_radiance_value(devices):
     try:
         # Define mean radiance keys (higher priority)
-        mean_radiance = ['Mean Number Radiance', 'Radiance Mean', 'Rad Mean', 'Radiance Avg', 'Rad Avg']
+        #mean_radiance = ['Mean_Number_Radiance', 'Radiance_Mean', 'Rad_Mean', 'Radiance_Avg', 'Rad_Avg']
+        mean_radiance = ['Mean Number Radiance', 'Mean Radiance', 'Radiance Mean', 'Radiance Avg', 'Rad Avg']
         # Define general radiance keys (lower priority)
         radiance = ['Radiance', 'radiance', 'rad', 'Rad']
         
         radiance_value = None
         mean_radiance_value = None
-        mean_radiance_present = False
         
         for device in devices:
             if device and device.is_enabled:
+                mean_radiance_present = False  # Reset per device
                 latest_device_data = DeviceData.objects.filter(device_name=device).order_by('-timestamp').first()
 
                 logger.info(f"RADIANCE")
                 logger.info(f"Latest device data: {latest_device_data}")
-                logger.info(f"Latest device data items: {latest_device_data.data.items()}")
-                logger.info(f"Latest device data timestamp: {latest_device_data.timestamp}")
+                if latest_device_data:
+                    logger.info(f"Latest device data items: {latest_device_data.data.items()}")
+                    logger.info(f"Latest device data timestamp: {latest_device_data.timestamp}")
 
                 if latest_device_data and latest_device_data.data:
                     # Check if device has radiance variables (either mean or general)
@@ -892,6 +894,7 @@ def find_radiance_value(devices):
                                 timestamp__gte=start_time,
                                 timestamp__lt=end_time
                             ).order_by('timestamp')
+                            logger.info(f"Quarter-hour data: {quarter_hour_data}")
 
                             # First, check for mean radiance (higher priority)
                             for radiance_value_name in mean_radiance:
@@ -909,9 +912,11 @@ def find_radiance_value(devices):
                                 
                                 # If we found valid mean radiance values, calculate average and return immediately
                                 if radiance_values:
+                                    logger.info(f"Radiance values: {radiance_values}")
                                     avg_radiance = sum(radiance_values) / len(radiance_values)
                                     # Validate the average value
                                     if isinstance(avg_radiance, (int, float)) and not math.isnan(avg_radiance) and avg_radiance >= 0:
+                                        logger.info(f"Found mean radiance value {avg_radiance} for device {device.name}")
                                         return avg_radiance
                             
                             # If no mean radiance found, check for general radiance (lower priority)
@@ -929,12 +934,14 @@ def find_radiance_value(devices):
                                             else:
                                                 logger.warning(f"Invalid radiance value type for device {device.name}: {type(value)}")
                                                 continue
+                                    logger.info(f"Radiance values: {radiance_values}")
                                     
                                     # If we found valid radiance values, calculate average and return
                                     if radiance_values:
                                         avg_radiance = sum(radiance_values) / len(radiance_values)
                                         # Validate the average value
                                         if isinstance(avg_radiance, (int, float)) and not math.isnan(avg_radiance) and avg_radiance >= 0:
+                                            logger.info(f"Found radiance value {avg_radiance} for device {device.name}")
                                             return avg_radiance
 
                         else:  # DLMS protocol
@@ -953,6 +960,7 @@ def find_radiance_value(devices):
                                     # Validate numeric value
                                     if isinstance(mean_radiance_value, (int, float)) and not math.isnan(mean_radiance_value) and mean_radiance_value >= 0:
                                         mean_radiance_present = True
+                                        logger.info(f"Found mean radiance value {mean_radiance_value} for device {device.name}")
                                         return mean_radiance_value
                                     else:
                                         continue
@@ -972,6 +980,7 @@ def find_radiance_value(devices):
                                         
                                         # Validate numeric value
                                         if isinstance(radiance_value, (int, float)) and not math.isnan(radiance_value) and radiance_value >= 0:
+                                            logger.info(f"Found radiance value {radiance_value} for device {device.name}")
                                             return radiance_value
                                         else:
                                             continue
@@ -979,6 +988,7 @@ def find_radiance_value(devices):
                 logger.info(f"No radiance value found for device {device.name}")
         
         # Return None if no radiance value found in any device
+        logger.info("No radiance value found in any device")
         return None
             
     except Exception as e:
