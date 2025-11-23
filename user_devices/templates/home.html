@@ -56,8 +56,16 @@
                 <div class="tab-content-container">
                     {% for gateway_id, chart_data in gateway_chart_data.items %}
                     <div class="tab-content {% if forloop.first %}active{% endif %}" id="tab-{{ gateway_id }}">
-                        <div class="chart-container">
-                            <canvas id="chart-{{ gateway_id }}" width="400" height="300"></canvas>
+                        <div class="chart-wrapper">
+                            <button class="nav-button nav-button-prev" onclick="navigateDate(-1)" title="Giorno precedente">
+                                <span class="nav-arrow">←</span>
+                            </button>
+                            <div class="chart-container">
+                                <canvas id="chart-{{ gateway_id }}" width="400" height="300"></canvas>
+                            </div>
+                            <button class="nav-button nav-button-next" onclick="navigateDate(1)" title="Giorno successivo">
+                                <span class="nav-arrow">→</span>
+                            </button>
                         </div>
                     </div>
                     {% endfor %}
@@ -216,6 +224,38 @@
         // Gateway chart data from Django
         const gatewayChartData = JSON.parse('{{ gateway_chart_data_json|escapejs }}');
         const charts = {}; // Store chart instances
+        
+        // Date navigation function
+        function navigateDate(days) {
+            const datePicker = document.getElementById('date-picker');
+            if (!datePicker) return;
+            
+            // Get current date from the date picker
+            const currentDate = new Date(datePicker.value);
+            
+            // Add or subtract days
+            currentDate.setDate(currentDate.getDate() + days);
+            
+            // Format date as YYYY-MM-DD
+            const year = currentDate.getFullYear();
+            const month = String(currentDate.getMonth() + 1).padStart(2, '0');
+            const day = String(currentDate.getDate()).padStart(2, '0');
+            const newDate = `${year}-${month}-${day}`;
+            
+            // Update the date picker value
+            datePicker.value = newDate;
+            
+            // Submit the form to reload the page with new date
+            const form = datePicker.closest('form');
+            if (form) {
+                form.submit();
+            } else {
+                // Fallback: redirect with date parameter
+                const url = new URL(window.location.href);
+                url.searchParams.set('date', newDate);
+                window.location.href = url.toString();
+            }
+        }
         
         // Tab switching function
         function switchTab(gatewayId) {

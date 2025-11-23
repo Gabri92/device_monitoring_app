@@ -413,12 +413,56 @@ button[type="submit"]:hover {
     margin-bottom: 20px;
 }
 
+/* Chart Wrapper - contains navigation buttons and chart */
+.chart-wrapper {
+    position: relative;
+    display: flex;
+    align-items: center;
+    width: 100%;
+    gap: 15px;
+}
+
 .chart-container {
     position: relative;
     height: 400px;
-    width: 100%;
+    flex: 1;
     margin: 0;
     padding: 0;
+    min-width: 0; /* Allows flex item to shrink below content size */
+}
+
+/* Navigation Buttons for Chart */
+.nav-button {
+    background-color: rgba(48, 95, 132, 0.9);
+    color: white;
+    border: none;
+    border-radius: 50%;
+    width: 50px;
+    height: 50px;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 24px;
+    font-weight: bold;
+    flex-shrink: 0; /* Prevents buttons from shrinking */
+    transition: all 0.3s ease;
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.2);
+}
+
+.nav-button:hover {
+    background-color: rgba(48, 95, 132, 1);
+    transform: scale(1.1);
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
+}
+
+.nav-button:active {
+    transform: scale(0.95);
+}
+
+.nav-arrow {
+    line-height: 1;
+    user-select: none;
 }
 
 /* Chart.js specific adjustments */
@@ -508,6 +552,16 @@ button[type="submit"]:hover {
         height: 300px;
     }
     
+    .chart-wrapper {
+        gap: 10px;
+    }
+    
+    .nav-button {
+        width: 40px;
+        height: 40px;
+        font-size: 20px;
+    }
+    
     .chart-header {
         flex-direction: column;
         align-items: flex-start;
@@ -575,5 +629,15 @@ button[type="submit"]:hover {
     
     .chart-container {
         height: 250px;
+    }
+    
+    .chart-wrapper {
+        gap: 8px;
+    }
+    
+    .nav-button {
+        width: 35px;
+        height: 35px;
+        font-size: 18px;
     }
 }
