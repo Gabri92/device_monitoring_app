@@ -135,16 +135,73 @@
         <!--style="border: 1px solid black; border-collapse: collapse;"-->
         <section class="data-section">
             <h2>Counters</h2>
-            {% if data %}
-            <div class="counter-list">
-                {% for key, val in data.items %}
-                <div class="counter-item">
-                    <span class="counter-name">{{ key|display_varname }}:</span>
-                    <span class="counter-value">{{ val.value|floatformat:2 }}</span>
-                    <span class="counter-unit">{{ val.unit }}</span>
-                </div>
+            {% if counters_by_section %}
+                {% for section, counters in counters_by_section.items %}
+                    {% if section %}
+                        <div class="counter-section">
+                            <h3 class="counter-section-title">{{ section.name }}</h3>
+                            <div class="counter-list">
+                                {% for counter in counters %}
+                                <div class="counter-item">
+                                    <span class="counter-name">{{ counter.var_name|display_varname }}:</span>
+                                    <span class="counter-value">
+                                        {% if counter.value.value %}
+                                            {{ counter.value.value|floatformat:2 }}
+                                        {% else %}
+                                            {{ counter.value|floatformat:2 }}
+                                        {% endif %}
+                                    </span>
+                                    <span class="counter-unit">
+                                        {% if counter.value.unit %}
+                                            {{ counter.value.unit }}
+                                        {% elif counter.unit %}
+                                            {{ counter.unit }}
+                                        {% endif %}
+                                    </span>
+                                </div>
+                                {% endfor %}
+                            </div>
+                        </div>
+                    {% else %}
+                        <!-- Counters without section -->
+                        {% if counters %}
+                        <div class="counter-section">
+                            <div class="counter-list">
+                                {% for counter in counters %}
+                                <div class="counter-item">
+                                    <span class="counter-name">{{ counter.var_name|display_varname }}:</span>
+                                    <span class="counter-value">
+                                        {% if counter.value.value %}
+                                            {{ counter.value.value|floatformat:2 }}
+                                        {% else %}
+                                            {{ counter.value|floatformat:2 }}
+                                        {% endif %}
+                                    </span>
+                                    <span class="counter-unit">
+                                        {% if counter.value.unit %}
+                                            {{ counter.value.unit }}
+                                        {% elif counter.unit %}
+                                            {{ counter.unit }}
+                                        {% endif %}
+                                    </span>
+                                </div>
+                                {% endfor %}
+                            </div>
+                        </div>
+                        {% endif %}
+                    {% endif %}
                 {% endfor %}
-            </div>
+            {% elif data %}
+                <!-- Fallback to old format if counters_by_section is not available -->
+                <div class="counter-list">
+                    {% for key, val in data.items %}
+                    <div class="counter-item">
+                        <span class="counter-name">{{ key|display_varname }}:</span>
+                        <span class="counter-value">{{ val.value|floatformat:2 }}</span>
+                        <span class="counter-unit">{{ val.unit }}</span>
+                    </div>
+                    {% endfor %}
+                </div>
             {% else %}
                 <p>No data records available for this device.</p>
             {% endif %}

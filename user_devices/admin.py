@@ -1,5 +1,5 @@
 from django.contrib import admin
-from .models import User, Gateway, Device, DeviceVariable, ModbusMappingVariable, DlmsMappingVariable, ComputedVariable, Button, DeviceData, EnergyData, GatewayData
+from .models import User, Gateway, Device, DeviceVariable, ModbusMappingVariable, DlmsMappingVariable, ComputedVariable, Button, DeviceData, EnergyData, GatewayData, CounterSection
 from .commands import set_pin_status
 from django.utils.html import format_html
 from django.urls import reverse
@@ -36,19 +36,63 @@ class GatewayAdmin(admin.ModelAdmin):
 class MemoryMappingInlineModbus(SortableStackedInline, admin.StackedInline):
     model = ModbusMappingVariable
     extra = 0
-    fields = ('var_name', 'address', 'unit', 'conversion_factor', 'bit_length','endianness', 'is_signed', 'show_on_graph', 'show_in_homepage') 
+    fields = ('var_name', 'address', 'unit', 'conversion_factor', 'bit_length','endianness', 'is_signed', 'section', 'show_on_graph', 'show_in_homepage') 
     sortable = 'order'
     classes = ['modbus-inline']
+    
+    def get_formset(self, request, obj=None, **kwargs):
+        # Store the device (obj) as an attribute of the inline for use in formfield_for_foreignkey
+        self._device = obj
+        return super().get_formset(request, obj, **kwargs)
+    
+    def formfield_for_foreignkey(self, db_field, request, **kwargs):
+        if db_field.name == "section":
+            device = None
+            # First try to get device from stored attribute (set in get_formset)
+            if hasattr(self, '_device') and self._device:
+                device = self._device
+            # If not available, try to get from the inline instance
+            elif hasattr(self, 'instance') and self.instance and hasattr(self.instance, 'device') and self.instance.device:
+                device = self.instance.device
+            
+            if device:
+                kwargs["queryset"] = CounterSection.objects.filter(device=device).order_by('order', 'name')
+            else:
+                # If no device found, show empty queryset
+                kwargs["queryset"] = CounterSection.objects.none()
+        return super().formfield_for_foreignkey(db_field, request, **kwargs)
     
 class MemoryMappingInlineDlms(SortableStackedInline, admin.StackedInline):
     model = DlmsMappingVariable
     form = DlmsMappingVariableForm
     extra = 0
     fields = (
-        'var_name', 'obis_code', 'unit', 'conversion_factor','column_idx','show_on_graph', 'show_in_homepage'
+        'var_name', 'obis_code', 'unit', 'conversion_factor','column_idx', 'section', 'show_on_graph', 'show_in_homepage'
     )
     sortable = 'order'
     classes = ['dlms-inline']
+    
+    def get_formset(self, request, obj=None, **kwargs):
+        # Store the device (obj) as an attribute of the inline for use in formfield_for_foreignkey
+        self._device = obj
+        return super().get_formset(request, obj, **kwargs)
+    
+    def formfield_for_foreignkey(self, db_field, request, **kwargs):
+        if db_field.name == "section":
+            device = None
+            # First try to get device from stored attribute (set in get_formset)
+            if hasattr(self, '_device') and self._device:
+                device = self._device
+            # If not available, try to get from the inline instance
+            elif hasattr(self, 'instance') and self.instance and hasattr(self.instance, 'device') and self.instance.device:
+                device = self.instance.device
+            
+            if device:
+                kwargs["queryset"] = CounterSection.objects.filter(device=device).order_by('order', 'name')
+            else:
+                # If no device found, show empty queryset
+                kwargs["queryset"] = CounterSection.objects.none()
+        return super().formfield_for_foreignkey(db_field, request, **kwargs)
     
     #class Media:
     #    js = ('admin/js/dlms_variable_inline.js',)
@@ -56,9 +100,37 @@ class MemoryMappingInlineDlms(SortableStackedInline, admin.StackedInline):
 class ComputedVariableInline(SortableStackedInline, admin.StackedInline):
     model = ComputedVariable
     extra = 0
-    fields = ('var_name', 'unit', 'formula','show_on_graph', 'show_in_homepage')
+    fields = ('var_name', 'unit', 'formula', 'section', 'show_on_graph', 'show_in_homepage')
     sortable = 'order'
+    
+    def get_formset(self, request, obj=None, **kwargs):
+        # Store the device (obj) as an attribute of the inline for use in formfield_for_foreignkey
+        self._device = obj
+        return super().get_formset(request, obj, **kwargs)
+    
+    def formfield_for_foreignkey(self, db_field, request, **kwargs):
+        if db_field.name == "section":
+            device = None
+            # First try to get device from stored attribute (set in get_formset)
+            if hasattr(self, '_device') and self._device:
+                device = self._device
+            # If not available, try to get from the inline instance
+            elif hasattr(self, 'instance') and self.instance and hasattr(self.instance, 'device') and self.instance.device:
+                device = self.instance.device
+            
+            if device:
+                kwargs["queryset"] = CounterSection.objects.filter(device=device).order_by('order', 'name')
+            else:
+                # If no device found, show empty queryset
+                kwargs["queryset"] = CounterSection.objects.none()
+        return super().formfield_for_foreignkey(db_field, request, **kwargs)
 
+
+class CounterSectionInline(admin.StackedInline):
+    model = CounterSection
+    extra = 0
+    fields = ('name', 'order')
+    ordering = ('order', 'name')
 
 class DeviceAdmin(SortableAdminBase, admin.ModelAdmin):
     form = DeviceForm
@@ -87,6 +159,7 @@ class DeviceAdmin(SortableAdminBase, admin.ModelAdmin):
     
     def get_inline_instances(self, request, obj=None):
         return [
+            CounterSectionInline(self.model, self.admin_site),
             MemoryMappingInlineModbus(self.model, self.admin_site),
             MemoryMappingInlineDlms(self.model, self.admin_site),
             ComputedVariableInline(self.model, self.admin_site),
@@ -117,7 +190,7 @@ class DeviceAdmin(SortableAdminBase, admin.ModelAdmin):
                 is_enabled=False,  # Start disabled for safety
                 slave_id=device.slave_id,
                 start_address=device.start_address,
-                bytes_count=device.bytes_count,
+                word_count=device.word_count,
                 port=device.port,
                 availability=device.availability,
                 show_energy=device.show_energy,
@@ -295,9 +368,17 @@ class ButtonAdmin(admin.ModelAdmin):
     
 # Register models in logical groups for better visual organization
 
+# Counter Section Admin
+class CounterSectionAdmin(admin.ModelAdmin):
+    list_display = ('name', 'device', 'order')
+    list_filter = ('device',)
+    search_fields = ('name', 'device__name')
+    ordering = ('device', 'order', 'name')
+
 # Device Settings Group
 admin.site.register(Gateway, GatewayAdmin)
 admin.site.register(Device, DeviceAdmin)
+admin.site.register(CounterSection, CounterSectionAdmin)
 admin.site.register(Button, ButtonAdmin)
 
 # Data Management Group 

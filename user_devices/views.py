@@ -4,7 +4,7 @@ from django.contrib.auth import authenticate, login, logout
 from django.shortcuts import render
 from django.shortcuts import render, get_object_or_404
 from django.db.models import Avg
-from .models import Device, Button, Gateway, ComputedVariable, ModbusMappingVariable, DlmsMappingVariable, DeviceData, EnergyData, GatewayData
+from .models import Device, Button, Gateway, ComputedVariable, ModbusMappingVariable, DlmsMappingVariable, DeviceData, EnergyData, GatewayData, CounterSection
 from django.shortcuts import redirect
 from .commands import set_pin_status
 from user_devices.helper_funcs import sanitize_variable_name, convert_to_local_time
@@ -282,12 +282,22 @@ def device_detail_view(request, device_name):
         "x_data": [],
         "y_data": [],
         "chart_error": "No data configure for this device yet.",
-        "data": {}
+        "data": {},
+        "counters_by_section": {}
     }
 
     # Retrieve last data from the device
     energy_data = EnergyData.objects.filter(device_name=device).order_by('-timestamp').first()
     device_data = DeviceData.objects.filter(device_name=device).order_by('-timestamp').first()
+    
+    # Get all sections for this device, ordered by order and name
+    sections = CounterSection.objects.filter(device=device).order_by('order', 'name')
+    
+    # Initialize counters_by_section with sections and a None key for ungrouped counters
+    counters_by_section = {}
+    for section in sections:
+        counters_by_section[section] = []
+    counters_by_section[None] = []  # For counters without a section
     
     # Only process energy_data if it exists
     if energy_data:
@@ -313,8 +323,41 @@ def device_detail_view(request, device_name):
         for var in all_vars:
             sanitized_name = sanitize_variable_name(var.var_name)
             if sanitized_name in device_data.data:
-                value = device_data.data[sanitized_name]
+                raw_value = device_data.data[sanitized_name]
+                
+                # Handle different data structures
+                if isinstance(raw_value, dict) and "value" in raw_value:
+                    # Value is a dict with 'value' and possibly 'unit'
+                    value = raw_value
+                    unit = raw_value.get("unit", var.unit)
+                else:
+                    # Value is a simple value
+                    value = {"value": raw_value, "unit": var.unit}
+                    unit = var.unit
+                
+                # Store in old format for backward compatibility
                 context["data"][var.var_name] = value
+                
+                # Group counter by section
+                counter_item = {
+                    'var_name': var.var_name,
+                    'value': value,
+                    'unit': unit
+                }
+                
+                # Add to appropriate section (or None if no section)
+                section = getattr(var, 'section', None)
+                if section in counters_by_section:
+                    counters_by_section[section].append(counter_item)
+                else:
+                    counters_by_section[None].append(counter_item)
+    
+    # Remove empty sections from the dictionary
+    counters_by_section = {k: v for k, v in counters_by_section.items() if v}
+    
+    # Pass to context
+    context["counters_by_section"] = counters_by_section
+    context["sections"] = sections
 
     # Retrieve historic data for chart
     y_variable = ComputedVariable.objects.filter(device=device, show_on_graph=True).first() or \

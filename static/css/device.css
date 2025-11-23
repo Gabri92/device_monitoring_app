@@ -176,6 +176,28 @@ button:hover {
     color: #555;
 }
 
+/* Counter Section Styles */
+.counter-section {
+    margin-bottom: 25px;
+    padding: 15px;
+    background-color: #f9f9f9;
+    border-radius: 6px;
+    border-left: 4px solid #336791;
+}
+
+.counter-section:last-child {
+    margin-bottom: 0;
+}
+
+.counter-section-title {
+    color: #336791;
+    font-size: 1.2em;
+    font-weight: bold;
+    margin: 0 0 15px 0;
+    padding-bottom: 8px;
+    border-bottom: 2px solid #ddd;
+}
+
 .chart-container{
     flex: 2;
 }

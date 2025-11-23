@@ -57,6 +57,21 @@ class Device(models.Model):
     def __str__(self):
         return f"{self.name}"
 
+class CounterSection(models.Model):
+    """Sezioni logiche per raggruppare i counters (variabili di lettura)"""
+    device = models.ForeignKey(Device, on_delete=models.CASCADE, related_name="counter_sections")
+    name = models.CharField(max_length=100, help_text="Nome della sezione (es. Power, MPPT, Stato)")
+    order = models.PositiveIntegerField(default=0, help_text="Ordine di visualizzazione della sezione")
+    
+    class Meta:
+        verbose_name = "Counter Section"
+        verbose_name_plural = "Counter Sections"
+        ordering = ['device', 'order', 'name']
+        unique_together = [['device', 'name']]
+    
+    def __str__(self):
+        return f"{self.device.name} - {self.name}"
+
 class DeviceVariable(models.Model):   
     VARIABLE_TYPE_CHOICES = [
         ('memory', 'Memory Mapping'),
@@ -72,7 +87,10 @@ class DeviceVariable(models.Model):
     unit = models.CharField(max_length=20, help_text="Measurement unit (e.g., V, A, W)", null=True, blank=True)
     show_on_graph = models.BooleanField(default=False, help_text="Show this variable on the graph")
     show_in_homepage = models.BooleanField(default=False, help_text="Show this variable in the homepage")
-    order = models.PositiveIntegerField(default=0) 
+    order = models.PositiveIntegerField(default=0)
+    section = models.ForeignKey('CounterSection', on_delete=models.SET_NULL, null=True, blank=True, 
+                                related_name='%(class)s_variables', 
+                                help_text="Sezione logica per raggruppare questo counter") 
 
     class Meta:
         ordering = ['order']  # Ensure sorted display
