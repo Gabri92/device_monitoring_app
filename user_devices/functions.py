@@ -20,6 +20,26 @@ MAX_WORDS_PER_READ = 12
 TIMEOUT = 5                 # Timeout per la connessione
 
 """
+Probes a DLMS device to check if it is reachable.
+"""
+def probe_dlms_device(device, timeout=30):
+    try:
+        gateway_ip = device.Gateway.ip_address
+        gateway_port = device.port
+
+        rest_api_call = f"http://{gateway_ip}:{gateway_port}/dlms/clock"
+        response = requests.get(rest_api_call, timeout=timeout)
+        if response.ok:
+            logger.info(f"DLMS device is reachable")
+            return True
+        else:
+            logger.error(f"DLMS device is not reachable")
+            return False    
+    except Exception as e:
+        logger.error(f"Error probing DLMS device: {e}")
+        return False
+        
+"""
 Reads DLMS registers for a given device.
 """
 def read_dlms_values(device):

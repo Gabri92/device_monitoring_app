@@ -143,6 +143,7 @@ CELERY_RESULT_BACKEND = "redis://redis:6379/0"
 
 # Celery Beat Schedule Configuration
 CELERY_BEAT_SCHEDULE_INTERVAL = 60  # Schedule interval in seconds (default: 15 minutes)
+CELERY_PLANT_METRICS_INTERVAL = 30  # Schedule interval in seconds (default: 15 minutes)
 
 #TODO: Decidere se mantenere
 DATA_UPLOAD_MAX_NUMBER_FIELDS = 10000  # Set this to a large enough number

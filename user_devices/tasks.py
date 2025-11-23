@@ -36,16 +36,28 @@ def scan_and_read_devices(gateway_ip):
             logger.info(f"No devices found for gateway {gateway.ip_address}")
             return
 
+        skip_dlms_devices = False
+        logger.info(f"Skip DLMS devices: {skip_dlms_devices}")
+        client = None
         for device in devices:
             if device.is_enabled:
+                values = None  # Initialize values for each device
                 try:
                     logger.info(f"Protocol: {device.protocol}")
                     if device.protocol == 'modbus':
-                        client = ModbusTcpClient(gateway.ip_address, port=device.port)
+                        # Configure Modbus client with timeout to prevent connection hangs
+                        client = ModbusTcpClient(
+                            gateway.ip_address, 
+                            port=device.port,
+                            timeout=30  # 30 seconds timeout for connection and operations
+                        )
                         connection = client.connect()
                         if not connection:
                             logger.warning(f"Failed to connect to device on {gateway.ip_address}:{device.port}")
                             client.close()
+                            client = None
+                            # Add delay before trying next device to avoid overwhelming the gateway
+                            time.sleep(1)
                             continue
                         
                         logger.info(f"Connected to device {device.name} on {gateway.ip_address}:{device.port}")
@@ -66,11 +78,18 @@ def scan_and_read_devices(gateway_ip):
                         values = {**mapped_values, **computed_values}
 
                         logger.info(f"Final values: {values}")
-                    elif device.protocol == 'dlms':
+                    elif device.protocol == 'dlms' and not skip_dlms_devices:
+                        # Probe the DLMS device to check if it is reachable with a timeout of 30 seconds
+                        skip_dlms_devices = not functions.probe_dlms_device(device, timeout=30)
+                
+                        if skip_dlms_devices:
+                            # Add delay before trying next device
+                            time.sleep(1)
+                            continue
+
                         logger.info(f"Connected to device {device.name} on {gateway.ip_address}:{device.port}")
                         values = functions.read_dlms_values(device)
-                        logger.info(f"Values read: {values}")
-                    
+                        logger.info(f"Values read: {values}")    
                     else:
                         continue
                     
@@ -102,10 +121,19 @@ def scan_and_read_devices(gateway_ip):
 
                 except Exception as e:
                     logger.error(f"Error while reading values for device {device.name}: {e}")
-                    return
+                    # Use continue instead of return to process remaining devices
+                    continue
                 finally:
-                    if device.protocol == 'modbus':
-                        client.close()        
+                    # Close Modbus client if it was opened
+                    if client is not None:
+                        try:
+                            client.close()
+                        except Exception as e:
+                            logger.warning(f"Error closing Modbus client for device {device.name}: {e}")
+                        finally:
+                            client = None
+                    # Add delay between device readings to avoid overwhelming the gateway
+                    time.sleep(1)        
                         
 @shared_task
 def compute_plant_metrics():

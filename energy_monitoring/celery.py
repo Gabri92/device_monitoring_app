@@ -14,7 +14,7 @@ app.conf.beat_schedule = {
     },
     'compute_plant_metrics': {
         'task': 'user_devices.tasks.compute_plant_metrics',
-        'schedule': settings.CELERY_BEAT_SCHEDULE_INTERVAL,  
+        'schedule': settings.CELERY_PLANT_METRICS_INTERVAL, 
     },
     'midnight_energy_aggregation': {
         'task': 'user_devices.tasks.midnight_energy_aggregation',
