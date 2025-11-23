@@ -1,6 +1,6 @@
 from django.core.management.base import BaseCommand
 from django.utils import timezone
-from user_devices.models import Gateway, GatewayData, Device, EnergyData
+from user_devices.models import Gateway, GatewayData, Device, EnergyData, DeviceData
 from datetime import datetime, timedelta
 import random
 import math
@@ -31,16 +31,18 @@ class Command(BaseCommand):
             self.stdout.write('Clearing existing data...')
             gateway_data_count = GatewayData.objects.count()
             energy_data_count = EnergyData.objects.count()
+            device_data_count = DeviceData.objects.count()
             
-            if gateway_data_count > 0 or energy_data_count > 0:
-                confirm = input(f'This will delete {gateway_data_count} gateway records and {energy_data_count} energy records. Continue? (y/N): ')
+            if gateway_data_count > 0 or energy_data_count > 0 or device_data_count > 0:
+                confirm = input(f'This will delete {gateway_data_count} gateway records, {energy_data_count} energy records, and {device_data_count} device records. Continue? (y/N): ')
                 if confirm.lower() != 'y':
                     self.stdout.write(self.style.WARNING('Operation cancelled.'))
                     return
                 
                 GatewayData.objects.all().delete()
                 EnergyData.objects.all().delete()
-                self.stdout.write(self.style.SUCCESS(f'Deleted {gateway_data_count} gateway records and {energy_data_count} energy records.'))
+                DeviceData.objects.all().delete()
+                self.stdout.write(self.style.SUCCESS(f'Deleted {gateway_data_count} gateway records, {energy_data_count} energy records, and {device_data_count} device records.'))
             else:
                 self.stdout.write('No existing data to clear.')
         
@@ -56,6 +58,7 @@ class Command(BaseCommand):
         
         total_gateway_records = 0
         total_energy_records = 0
+        total_device_records = 0
         
         for gateway in gateways:
             self.stdout.write(f'Processing gateway: {gateway.name}')
@@ -75,14 +78,23 @@ class Command(BaseCommand):
                         # Generate realistic solar data based on time of day
                         data = self.generate_solar_data(hour, minute)
                         
-                        # Create or update GatewayData record
-                        gateway_data, created = GatewayData.objects.get_or_create(
+                        # Check if data already exists for this gateway and timestamp
+                        existing_data = GatewayData.objects.filter(
                             Gateway=gateway,
-                            timestamp=timestamp,
-                            defaults={'data': data}
-                        )
+                            timestamp=timestamp
+                        ).first()
                         
-                        if created:
+                        if existing_data:
+                            # Update existing record
+                            existing_data.data = data
+                            existing_data.save()
+                        else:
+                            # Create new GatewayData record
+                            gateway_data = GatewayData.objects.create(
+                                Gateway=gateway,
+                                timestamp=timestamp,
+                                data=data
+                            )
                             total_gateway_records += 1
                             
                             # Set users if gateway has users
@@ -117,15 +129,25 @@ class Command(BaseCommand):
                             # Generate realistic energy data based on time of day
                             energy_data = self.generate_energy_meter_data(hour, minute, day_offset)
                             
-                            # Create or update EnergyData record
-                            energy_record, created = EnergyData.objects.get_or_create(
+                            # Check if data already exists for this device and timestamp
+                            existing_energy = EnergyData.objects.filter(
                                 Gateway=energy_meter.Gateway,
                                 device_name=energy_meter,
-                                timestamp=timestamp,
-                                defaults={'data': energy_data}
-                            )
+                                timestamp=timestamp
+                            ).first()
                             
-                            if created:
+                            if existing_energy:
+                                # Update existing record
+                                existing_energy.data = energy_data
+                                existing_energy.save()
+                            else:
+                                # Create new EnergyData record
+                                energy_record = EnergyData.objects.create(
+                                    Gateway=energy_meter.Gateway,
+                                    device_name=energy_meter,
+                                    timestamp=timestamp,
+                                    data=energy_data
+                                )
                                 total_energy_records += 1
                                 
                                 # Set users if device has users
@@ -134,8 +156,67 @@ class Command(BaseCommand):
                 
                 self.stdout.write(f'  Generated energy data for {energy_meter.name}')
         
+        # Generate device data for all devices (excluding energy meters)
+        self.stdout.write('Generating device data...')
+        all_devices = Device.objects.exclude(name__icontains='energy meter')
+        if not all_devices.exists():
+            self.stdout.write(
+                self.style.WARNING('No devices found (excluding energy meters).')
+            )
+        else:
+            for device in all_devices:
+                if not device.Gateway:
+                    continue
+                    
+                self.stdout.write(f'Processing device: {device.name}')
+                
+                # Generate device data for each day
+                for day_offset in range(days):
+                    current_date = timezone.now().date() - timedelta(days=day_offset)
+                    
+                    # Generate data for each 15-minute interval of the day
+                    for hour in range(24):
+                        for minute in [0, 15, 30, 45]:
+                            # Create timestamp for this interval
+                            timestamp = timezone.make_aware(
+                                datetime.combine(current_date, datetime.min.time())
+                            ) + timedelta(hours=hour, minutes=minute)
+                            
+                            # Generate realistic device data based on time of day
+                            device_data = self.generate_device_data(hour, minute)
+                            
+                            # Check if data already exists for this device and timestamp
+                            existing_device_data = DeviceData.objects.filter(
+                                Gateway=device.Gateway,
+                                device_name=device,
+                                timestamp=timestamp
+                            ).first()
+                            
+                            if existing_device_data:
+                                # Update existing record
+                                existing_device_data.data = device_data
+                                existing_device_data.save()
+                            else:
+                                # Create new DeviceData record
+                                # Note: timestamp has auto_now_add=True, so we set it after creation
+                                device_data_record = DeviceData.objects.create(
+                                    Gateway=device.Gateway,
+                                    device_name=device,
+                                    data=device_data
+                                )
+                                # Update timestamp manually (auto_now_add doesn't allow setting during create)
+                                device_data_record.timestamp = timestamp
+                                device_data_record.save(update_fields=['timestamp'])
+                                total_device_records += 1
+                                
+                                # Set users if device has users
+                                if hasattr(device, 'user'):
+                                    device_data_record.user.set(device.user.all())
+                
+                self.stdout.write(f'  Generated device data for {device.name}')
+        
         self.stdout.write(
-            self.style.SUCCESS(f'Successfully generated {total_gateway_records} gateway records and {total_energy_records} energy records!')
+            self.style.SUCCESS(f'Successfully generated {total_gateway_records} gateway records, {total_energy_records} energy records, and {total_device_records} device records!')
         )
 
     def generate_solar_data(self, hour, minute):
@@ -265,4 +346,62 @@ class Command(BaseCommand):
                 'unit': 'kWh',
                 'value': round(monthly_produced, 2)
             }
+        }
+
+    def generate_device_data(self, hour, minute):
+        """Generate realistic device data based on time of day"""
+        
+        # Convert to decimal hour for calculations
+        decimal_hour = hour + minute / 60.0
+        
+        # Solar irradiance pattern (peaks around noon) for solar devices
+        if 6 <= decimal_hour <= 18:
+            # Normalized solar angle (0 at sunrise/sunset, 1 at noon)
+            solar_angle = math.sin(math.pi * (decimal_hour - 6) / 12)
+            
+            # Voltage varies slightly (typical for solar installations)
+            voltage = 230 + random.uniform(-10, 10)  # 220-240V
+            
+            # Current based on solar production (higher during peak hours)
+            base_current = solar_angle * 50  # Max 50A
+            current = max(0, base_current + random.uniform(-5, 5))
+            
+            # Power = Voltage * Current (in kW)
+            power = (voltage * current) / 1000  # Convert to kW
+            power = max(0, power + random.uniform(-1, 1))
+            
+            # Frequency (typical grid frequency)
+            frequency = 50 + random.uniform(-0.1, 0.1)  # 49.9-50.1 Hz
+            
+            # Temperature (higher during day)
+            temperature = 25 + solar_angle * 15 + random.uniform(-2, 2)  # 25-40°C
+            
+        else:
+            # Night time - minimal values
+            voltage = 230 + random.uniform(-5, 5)
+            current = random.uniform(0, 5)  # Minimal current
+            power = (voltage * current) / 1000
+            frequency = 50 + random.uniform(-0.05, 0.05)
+            temperature = 20 + random.uniform(-2, 2)  # Cooler at night
+        
+        # Add some realistic noise
+        voltage += random.uniform(-2, 2)
+        current += random.uniform(-1, 1)
+        power += random.uniform(-0.5, 0.5)
+        frequency += random.uniform(-0.02, 0.02)
+        temperature += random.uniform(-1, 1)
+        
+        # Ensure values are within reasonable bounds
+        voltage = max(200, min(250, voltage))
+        current = max(0, min(100, current))
+        power = max(0, min(50, power))
+        frequency = max(49.5, min(50.5, frequency))
+        temperature = max(15, min(45, temperature))
+        
+        return {
+            'Voltage': {'value': round(voltage, 2), 'unit': 'V'},
+            'Current': {'value': round(current, 2), 'unit': 'A'},
+            'Power': {'value': round(power, 2), 'unit': 'kW'},
+            'Frequency': {'value': round(frequency, 2), 'unit': 'Hz'},
+            'Temperature': {'value': round(temperature, 2), 'unit': '°C'},
         }
