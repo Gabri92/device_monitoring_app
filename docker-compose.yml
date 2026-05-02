@@ -31,7 +31,7 @@ services:
       - .:/app
     depends_on:
       - web
-      - redis  # Ensure celery starts after redis
+      - redis
 
   celery-beat:
     build: .
@@ -44,7 +44,42 @@ services:
   redis:
     image: redis:alpine
     ports:
-      - "6379:6379"  # Expose Redis on port 6379
-      
+      - "6379:6379"
+
+  # --- Nuovi servizi per la pipeline MQTT ---
+
+  mosquitto:
+    image: eclipse-mosquitto:2
+    restart: unless-stopped
+    ports:
+      - "8883:8883"         # MQTTS esposto ai gateway
+      # 1883 loopback-only: accessibile solo dal consumer all'interno della rete docker
+    volumes:
+      - ./mosquitto/config:/mosquitto/config:ro
+      - ./mosquitto/data:/mosquitto/data
+      - ./mosquitto/log:/mosquitto/log
+      - ./mosquitto/certs:/mosquitto/certs:ro
+
+  mqtt_consumer:
+    build: .
+    command: python -m user_devices.mqtt.consumer
+    restart: unless-stopped
+    volumes:
+      - .:/app
+      - ./mosquitto/certs:/certs:ro
+    environment:
+      - DJANGO_SETTINGS_MODULE=energy_monitoring.settings
+      - MQTT_BROKER_HOST=mosquitto
+      - MQTT_BROKER_PORT=1883            # connessione interna, no TLS necessario
+      - MQTT_TLS=0
+      - MQTT_USERNAME=${MQTT_CONSUMER_USER}
+      - MQTT_PASSWORD=${MQTT_CONSUMER_PASSWORD}
+      - MQTT_CLIENT_ID=django-consumer
+      - MQTT_LOG_LEVEL=INFO
+    depends_on:
+      - mosquitto
+      - redis
+      - database
+
 volumes:
   postgres_data:

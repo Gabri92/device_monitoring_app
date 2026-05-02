@@ -10,6 +10,14 @@ class Gateway(models.Model):
     ssh_password = models.CharField(max_length=100, default='ssh_psw')  # SSH password
     ip_address = models.CharField(max_length=50)
     performance_factor = models.FloatField(default=0, help_text="Performance factor of the plant")
+    use_mqtt = models.BooleanField(
+        default=False,
+        help_text=(
+            "Se True, i device Modbus di questo gateway vengono letti dalla "
+            "cache MQTT (Telegraf pubblica su MQTT). Se False, polling Modbus "
+            "TCP diretto come prima della migrazione."
+        ),
+    )
 
     class Meta:
         verbose_name = "Gateway"
